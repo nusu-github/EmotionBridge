@@ -149,9 +149,9 @@ def _run_eval(
 
     with torch.no_grad():
         for batch in data_loader:
-            labels = cast(torch.Tensor, batch.pop("labels"))
+            labels = cast("torch.Tensor", batch.pop("labels"))
 
-            predictions = cast(torch.Tensor, model(**batch))
+            predictions = cast("torch.Tensor", model(**batch))
             loss: torch.Tensor = _weighted_mse(predictions, labels, weights)
             reduced_loss = accelerator.reduce(loss.detach(), reduction="mean")
             losses.append(_to_scalar(reduced_loss))
@@ -160,8 +160,10 @@ def _run_eval(
                 (predictions.detach(), labels.detach()),
             )
 
-            all_predictions.append(cast(torch.Tensor, gathered_predictions).cpu().numpy())
-            all_targets.append(cast(torch.Tensor, gathered_targets).cpu().numpy())
+            all_predictions.append(
+                cast("torch.Tensor", gathered_predictions).cpu().numpy(),
+            )
+            all_targets.append(cast("torch.Tensor", gathered_targets).cpu().numpy())
 
     avg_loss = float(np.mean(losses)) if losses else 0.0
     stacked_predictions = (
@@ -283,8 +285,7 @@ def train_phase0(config: Phase0Config) -> dict[str, Any] | None:
     num_update_steps_per_epoch = max(
         1,
         math.ceil(
-            len(loaders["train"])
-            / max(1, config.train.gradient_accumulation_steps),
+            len(loaders["train"]) / max(1, config.train.gradient_accumulation_steps),
         ),
     )
     total_steps = max(1, num_update_steps_per_epoch * config.train.num_epochs)
@@ -324,10 +325,10 @@ def train_phase0(config: Phase0Config) -> dict[str, Any] | None:
         optimizer.zero_grad(set_to_none=True)
 
         for batch in loaders["train"]:
-            labels = cast(torch.Tensor, batch.pop("labels"))
+            labels = cast("torch.Tensor", batch.pop("labels"))
 
             with accelerator.accumulate(model):
-                predictions = cast(torch.Tensor, model(**batch))
+                predictions = cast("torch.Tensor", model(**batch))
                 loss: torch.Tensor = _weighted_mse(predictions, labels, weights)
 
                 accelerator.backward(loss)
