@@ -19,7 +19,7 @@ model:
 
 train:
   output_dir: artifacts/phase0
-  batch_size: 32
+  batch_size: 16
   num_epochs: 10
   bert_lr: 0.00002
   head_lr: 0.001
@@ -30,6 +30,8 @@ train:
   num_workers: 2
   pin_memory: true
   log_every_steps: 50
+  gradient_accumulation_steps: 2
+  mixed_precision: "fp16"
   emotion_weights: null
 
 eval:

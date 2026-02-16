@@ -42,6 +42,8 @@ class TrainConfig:
     num_workers: int = 2
     pin_memory: bool = True
     log_every_steps: int = 50
+    gradient_accumulation_steps: int = 1
+    mixed_precision: str = "no"
     emotion_weights: list[float] | None = None
 
 

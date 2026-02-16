@@ -1,12 +1,14 @@
 import json
+import math
 import random
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+from accelerate import Accelerator
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
@@ -59,12 +61,6 @@ class TextBatchCollator:
         return encoded
 
 
-def _resolve_device(device_name: str) -> torch.device:
-    if device_name == "cuda" and torch.cuda.is_available():
-        return torch.device("cuda")
-    return torch.device("cpu")
-
-
 def _set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -84,6 +80,23 @@ def _weighted_mse(
         return F.mse_loss(predictions, targets)
     squared_error = torch.square(predictions - targets)
     return (squared_error * weights).mean()
+
+
+def _to_scalar(value: Any) -> float:
+    if isinstance(value, torch.Tensor):
+        return float(value.detach().cpu().float().mean())
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, list):
+        if not value:
+            return 0.0
+        return float(np.mean([_to_scalar(element) for element in value]))
+    if isinstance(value, dict):
+        if not value:
+            return 0.0
+        return float(np.mean([_to_scalar(element) for element in value.values()]))
+    msg = f"Unsupported scalar conversion type: {type(value)!r}"
+    raise TypeError(msg)
 
 
 def _create_dataloaders(config: Phase0Config, tokenizer: Any):
@@ -124,27 +137,31 @@ def _create_dataloaders(config: Phase0Config, tokenizer: Any):
 
 
 def _run_eval(
-    model: TextEmotionRegressor,
+    model: torch.nn.Module,
     data_loader: DataLoader,
-    device: torch.device,
+    accelerator: Accelerator,
     weights: torch.Tensor | None,
 ) -> tuple[float, np.ndarray, np.ndarray]:
     model.eval()
-    losses = []
+    losses: list[float] = []
     all_predictions: list[np.ndarray] = []
     all_targets: list[np.ndarray] = []
 
     with torch.no_grad():
         for batch in data_loader:
-            labels = batch.pop("labels").to(device)
-            batch = {k: v.to(device) for k, v in batch.items()}
+            labels = cast(torch.Tensor, batch.pop("labels"))
 
-            predictions = model(**batch)
-            loss = _weighted_mse(predictions, labels, weights)
-            losses.append(float(loss.item()))
+            predictions = cast(torch.Tensor, model(**batch))
+            loss: torch.Tensor = _weighted_mse(predictions, labels, weights)
+            reduced_loss = accelerator.reduce(loss.detach(), reduction="mean")
+            losses.append(_to_scalar(reduced_loss))
 
-            all_predictions.append(predictions.detach().cpu().numpy())
-            all_targets.append(labels.detach().cpu().numpy())
+            gathered_predictions, gathered_targets = accelerator.gather_for_metrics(
+                (predictions.detach(), labels.detach()),
+            )
+
+            all_predictions.append(cast(torch.Tensor, gathered_predictions).cpu().numpy())
+            all_targets.append(cast(torch.Tensor, gathered_targets).cpu().numpy())
 
     avg_loss = float(np.mean(losses)) if losses else 0.0
     stacked_predictions = (
@@ -179,6 +196,7 @@ def _log_hparams(
         "batch_size": config.train.batch_size,
         "weight_decay": config.train.weight_decay,
         "warmup_ratio": config.train.warmup_ratio,
+        "grad_accum_steps": config.train.gradient_accumulation_steps,
         "dropout": config.model.dropout,
         "bottleneck_dim": config.model.bottleneck_dim,
         "max_length": config.data.max_length,
@@ -193,18 +211,42 @@ def _log_hparams(
     writer.add_hparams(hparam_dict, metric_dict)
 
 
-def train_phase0(config: Phase0Config) -> dict[str, Any]:
+def _validate_accelerate_settings(config: Phase0Config) -> None:
+    if config.train.gradient_accumulation_steps < 1:
+        msg = "train.gradient_accumulation_steps must be >= 1"
+        raise ValueError(msg)
+
+    if config.train.mixed_precision not in {"no", "fp16", "bf16"}:
+        msg = "train.mixed_precision must be one of: no, fp16, bf16"
+        raise ValueError(msg)
+
+    if config.train.device not in {"cpu", "cuda"}:
+        msg = "train.device must be either 'cpu' or 'cuda'"
+        raise ValueError(msg)
+
+
+def train_phase0(config: Phase0Config) -> dict[str, Any] | None:
+    _validate_accelerate_settings(config)
     _set_seed(config.data.random_seed)
-    device = _resolve_device(config.train.device)
+    accelerator = Accelerator(
+        cpu=config.train.device == "cpu",
+        mixed_precision=config.train.mixed_precision,
+        gradient_accumulation_steps=config.train.gradient_accumulation_steps,
+    )
 
     output_dir = Path(config.train.output_dir)
     checkpoints_dir = output_dir / "checkpoints"
     reports_dir = output_dir / "reports"
     tb_dir = output_dir / "tensorboard"
-    checkpoints_dir.mkdir(parents=True, exist_ok=True)
-    reports_dir.mkdir(parents=True, exist_ok=True)
+    if accelerator.is_main_process:
+        checkpoints_dir.mkdir(parents=True, exist_ok=True)
+        reports_dir.mkdir(parents=True, exist_ok=True)
 
-    writer = SummaryWriter(log_dir=str(tb_dir))
+    accelerator.wait_for_everyone()
+
+    writer: SummaryWriter | None = None
+    if accelerator.is_main_process:
+        writer = SummaryWriter(log_dir=str(tb_dir))
 
     tokenizer = AutoTokenizer.from_pretrained(config.model.pretrained_model_name)
     loaders, splits, metadata = _create_dataloaders(config, tokenizer)
@@ -218,7 +260,7 @@ def train_phase0(config: Phase0Config) -> dict[str, Any]:
         pretrained_model_name=config.model.pretrained_model_name,
         bottleneck_dim=config.model.bottleneck_dim,
         dropout=config.model.dropout,
-    ).to(device)
+    )
 
     optimizer = AdamW(
         [
@@ -228,7 +270,24 @@ def train_phase0(config: Phase0Config) -> dict[str, Any]:
         weight_decay=config.train.weight_decay,
     )
 
-    total_steps = max(1, len(loaders["train"]) * config.train.num_epochs)
+    model, optimizer, loaders["train"], loaders["val"], loaders["test"] = (
+        accelerator.prepare(
+            model,
+            optimizer,
+            loaders["train"],
+            loaders["val"],
+            loaders["test"],
+        )
+    )
+
+    num_update_steps_per_epoch = max(
+        1,
+        math.ceil(
+            len(loaders["train"])
+            / max(1, config.train.gradient_accumulation_steps),
+        ),
+    )
+    total_steps = max(1, num_update_steps_per_epoch * config.train.num_epochs)
     warmup_steps = int(total_steps * config.train.warmup_ratio)
     scheduler = get_linear_schedule_with_warmup(
         optimizer=optimizer,
@@ -250,7 +309,7 @@ def train_phase0(config: Phase0Config) -> dict[str, Any]:
         weights = torch.tensor(
             config.train.emotion_weights,
             dtype=torch.float32,
-            device=device,
+            device=accelerator.device,
         ).view(1, -1)
 
     best_val_loss = float("inf")
@@ -261,124 +320,153 @@ def train_phase0(config: Phase0Config) -> dict[str, Any]:
 
     for epoch in range(1, config.train.num_epochs + 1):
         model.train()
-        train_losses = []
+        train_losses: list[float] = []
+        optimizer.zero_grad(set_to_none=True)
 
         for batch in loaders["train"]:
-            labels = batch.pop("labels").to(device)
-            batch = {k: v.to(device) for k, v in batch.items()}
+            labels = cast(torch.Tensor, batch.pop("labels"))
 
-            predictions = model(**batch)
-            loss = _weighted_mse(predictions, labels, weights)
+            with accelerator.accumulate(model):
+                predictions = cast(torch.Tensor, model(**batch))
+                loss: torch.Tensor = _weighted_mse(predictions, labels, weights)
 
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
+                accelerator.backward(loss)
 
-            train_losses.append(float(loss.item()))
-            global_step += 1
+                if accelerator.sync_gradients:
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad(set_to_none=True)
 
-            if global_step % config.train.log_every_steps == 0:
-                writer.add_scalar("train/step_loss", float(loss.item()), global_step)
-                writer.add_scalar(
-                    "train/lr_bert",
-                    optimizer.param_groups[0]["lr"],
-                    global_step,
-                )
-                writer.add_scalar(
-                    "train/lr_head",
-                    optimizer.param_groups[1]["lr"],
-                    global_step,
-                )
+                    global_step += 1
+                    if (
+                        writer is not None
+                        and global_step % config.train.log_every_steps == 0
+                    ):
+                        writer.add_scalar(
+                            "train/step_loss",
+                            float(loss.item()),
+                            global_step,
+                        )
+                        writer.add_scalar(
+                            "train/lr_bert",
+                            optimizer.param_groups[0]["lr"],
+                            global_step,
+                        )
+                        writer.add_scalar(
+                            "train/lr_head",
+                            optimizer.param_groups[1]["lr"],
+                            global_step,
+                        )
+
+            reduced_step_loss = accelerator.reduce(loss.detach(), reduction="mean")
+            train_losses.append(_to_scalar(reduced_step_loss))
 
         val_loss, val_preds, val_targets = _run_eval(
             model,
             loaders["val"],
-            device,
+            accelerator,
             weights,
         )
         epoch_train_loss = float(np.mean(train_losses)) if train_losses else 0.0
 
-        writer.add_scalars(
-            "loss/epoch",
-            {"train": epoch_train_loss, "val": val_loss},
-            epoch,
-        )
+        if writer is not None:
+            writer.add_scalars(
+                "loss/epoch",
+                {"train": epoch_train_loss, "val": val_loss},
+                epoch,
+            )
 
         val_metrics = compute_regression_metrics(val_preds, val_targets)
-        writer.add_scalar("val/mse_macro", val_metrics["mse_macro"], epoch)
-        writer.add_scalar("val/pearson_min", val_metrics["pearson_min"], epoch)
-        writer.add_scalar("val/top1_accuracy", val_metrics["top1_accuracy"], epoch)
-        for emotion in EMOTION_LABELS:
-            writer.add_scalar(
-                f"val/mse_{emotion}",
-                val_metrics["mse_per_emotion"][emotion],
-                epoch,
-            )
-            writer.add_scalar(
-                f"val/pearson_{emotion}",
-                val_metrics["pearson_per_emotion"][emotion],
-                epoch,
-            )
+        if writer is not None:
+            writer.add_scalar("val/mse_macro", val_metrics["mse_macro"], epoch)
+            writer.add_scalar("val/pearson_min", val_metrics["pearson_min"], epoch)
+            writer.add_scalar("val/top1_accuracy", val_metrics["top1_accuracy"], epoch)
+            for emotion in EMOTION_LABELS:
+                writer.add_scalar(
+                    f"val/mse_{emotion}",
+                    val_metrics["mse_per_emotion"][emotion],
+                    epoch,
+                )
+                writer.add_scalar(
+                    f"val/pearson_{emotion}",
+                    val_metrics["pearson_per_emotion"][emotion],
+                    epoch,
+                )
 
-        history.append(
-            {
-                "epoch": float(epoch),
-                "train_loss": epoch_train_loss,
-                "val_loss": val_loss,
-                "global_step": float(global_step),
-            },
-        )
+        if accelerator.is_main_process:
+            history.append(
+                {
+                    "epoch": float(epoch),
+                    "train_loss": epoch_train_loss,
+                    "val_loss": val_loss,
+                    "global_step": float(global_step),
+                },
+            )
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             early_stop_count = 0
-            torch.save(
-                {
-                    "model_state_dict": model.state_dict(),
-                    "model_config": asdict(config.model),
-                    "tokenizer_name": config.model.pretrained_model_name,
-                    "max_length": config.data.max_length,
-                    "emotion_labels": EMOTION_LABELS,
-                    "config": config.to_dict(),
-                },
-                best_path,
-            )
+            if accelerator.is_main_process:
+                accelerator.save(
+                    {
+                        "model_state_dict": accelerator.get_state_dict(model),
+                        "model_config": asdict(config.model),
+                        "tokenizer_name": config.model.pretrained_model_name,
+                        "max_length": config.data.max_length,
+                        "emotion_labels": EMOTION_LABELS,
+                        "config": config.to_dict(),
+                    },
+                    best_path,
+                )
         else:
             early_stop_count += 1
 
         if early_stop_count >= config.train.early_stopping_patience:
             break
 
-    checkpoint = torch.load(best_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    accelerator.wait_for_everyone()
+    checkpoint = torch.load(best_path, map_location=accelerator.device)
+    accelerator.unwrap_model(model).load_state_dict(checkpoint["model_state_dict"])
 
     test_loss, test_predictions, test_targets = _run_eval(
         model,
         loaders["test"],
-        device,
+        accelerator,
         weights,
     )
     metrics = compute_regression_metrics(test_predictions, test_targets)
     metrics["test_loss"] = test_loss
     go_no_go = _go_no_go(metrics, config)
 
-    writer.add_scalar("test/mse_macro", metrics["mse_macro"], 0)
-    writer.add_scalar("test/pearson_min", metrics["pearson_min"], 0)
-    writer.add_scalar("test/top1_accuracy", metrics["top1_accuracy"], 0)
-    for emotion in EMOTION_LABELS:
-        writer.add_scalar(f"test/mse_{emotion}", metrics["mse_per_emotion"][emotion], 0)
-        writer.add_scalar(
-            f"test/pearson_{emotion}",
-            metrics["pearson_per_emotion"][emotion],
-            0,
-        )
+    if writer is not None:
+        writer.add_scalar("test/mse_macro", metrics["mse_macro"], 0)
+        writer.add_scalar("test/pearson_min", metrics["pearson_min"], 0)
+        writer.add_scalar("test/top1_accuracy", metrics["top1_accuracy"], 0)
+        for emotion in EMOTION_LABELS:
+            writer.add_scalar(
+                f"test/mse_{emotion}",
+                metrics["mse_per_emotion"][emotion],
+                0,
+            )
+            writer.add_scalar(
+                f"test/pearson_{emotion}",
+                metrics["pearson_per_emotion"][emotion],
+                0,
+            )
 
-    _log_hparams(writer, config, metrics)
-    writer.close()
+        _log_hparams(writer, config, metrics)
+        writer.close()
+
+    error_analysis = _build_error_analysis(
+        test_predictions,
+        test_targets,
+        splits["test"].texts,
+    )
+
+    if not accelerator.is_main_process:
+        return None
 
     save_effective_config(config, output_dir / "effective_config.yaml")
-
     _save_hparams_yaml(config, output_dir / "hparams.yaml")
 
     with (reports_dir / "data_report.json").open("w", encoding="utf-8") as file:
@@ -386,12 +474,6 @@ def train_phase0(config: Phase0Config) -> dict[str, Any]:
 
     with (reports_dir / "training_history.json").open("w", encoding="utf-8") as file:
         json.dump(history, file, ensure_ascii=False, indent=2)
-
-    error_analysis = _build_error_analysis(
-        test_predictions,
-        test_targets,
-        splits["test"].texts,
-    )
 
     with (reports_dir / "evaluation.json").open("w", encoding="utf-8") as file:
         json.dump(
@@ -419,7 +501,7 @@ def train_phase0(config: Phase0Config) -> dict[str, Any]:
     return {
         "output_dir": str(output_dir),
         "checkpoint": str(best_path),
-        "device": str(device),
+        "device": str(accelerator.device),
         "data_report": data_report,
         "history": history,
         "metrics": metrics,
@@ -451,6 +533,8 @@ def _save_hparams_yaml(config: Phase0Config, path: Path) -> None:
             "batch_size": config.train.batch_size,
             "num_epochs": config.train.num_epochs,
             "early_stopping_patience": config.train.early_stopping_patience,
+            "gradient_accumulation_steps": config.train.gradient_accumulation_steps,
+            "mixed_precision": config.train.mixed_precision,
             "random_seed": config.data.random_seed,
         },
         "data": {

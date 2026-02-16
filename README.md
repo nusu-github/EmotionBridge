@@ -28,6 +28,18 @@ uv run python main.py analyze-data --config configs/phase0.yaml
 uv run python main.py train --config configs/phase0.yaml
 ```
 
+`Accelerate` を使う場合（推奨）:
+
+```bash
+uv run accelerate config
+uv run accelerate launch main.py train --config configs/phase0.yaml
+```
+
+`configs/phase0.yaml` の `train` セクションで以下を調整できます。
+
+- `gradient_accumulation_steps`: 勾配累積ステップ数
+- `mixed_precision`: `"no" | "fp16" | "bf16"`
+
 出力先（既定）:
 
 - `artifacts/phase0/checkpoints/best_model.pt`

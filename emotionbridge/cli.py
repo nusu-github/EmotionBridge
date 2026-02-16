@@ -66,7 +66,8 @@ def _build_parser() -> argparse.ArgumentParser:
 def _cmd_train(config_path: str) -> None:
     config = load_config(config_path)
     result = train_phase0(config)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if result is not None:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def _cmd_analyze_data(config_path: str, output_dir: str) -> None:
