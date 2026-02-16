@@ -129,17 +129,20 @@ def _resolve_loss_weights(
             },
         )
     elif config.train.emotion_weight_mode == "inverse_mean":
-        safe_mean = np.maximum(train_mean_intensity, config.train.emotion_weight_epsilon)
+        safe_mean = np.maximum(
+            train_mean_intensity,
+            config.train.emotion_weight_epsilon,
+        )
         weight_array = 1.0 / safe_mean
         if config.train.emotion_weight_normalize:
-            mean_weight = max(float(weight_array.mean()), config.train.emotion_weight_epsilon)
-            weight_array = weight_array / mean_weight
+            mean_weight = max(
+                float(weight_array.mean()),
+                config.train.emotion_weight_epsilon,
+            )
+            weight_array /= mean_weight
         mode = "inverse_mean"
     else:
-        msg = (
-            "train.emotion_weight_mode must be one of: "
-            "none, inverse_mean"
-        )
+        msg = "train.emotion_weight_mode must be one of: none, inverse_mean"
         raise ValueError(msg)
 
     weight_tensor = torch.tensor(weight_array, dtype=torch.float32, device=device).view(
@@ -265,8 +268,7 @@ def _go_no_go(metrics: dict[str, Any], config: Phase0Config) -> dict[str, Any]:
             metrics["pearson_top6_min"] >= config.eval.go_top6_min_pearson
         ),
         "anger_trust_min_pearson": (
-            metrics["pearson_anger_trust_min"]
-            >= config.eval.go_anger_trust_min_pearson
+            metrics["pearson_anger_trust_min"] >= config.eval.go_anger_trust_min_pearson
         ),
         "top1_accuracy": metrics["top1_accuracy"] >= config.eval.go_top1_acc_min,
     }

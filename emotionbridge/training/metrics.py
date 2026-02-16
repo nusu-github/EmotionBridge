@@ -63,8 +63,7 @@ def compute_regression_metrics(
         ),
         "pearson_anger_trust_min": float(
             min(
-                pearson_per_emotion[emotion]
-                for emotion in LOW_VARIANCE_EMOTION_LABELS
+                pearson_per_emotion[emotion] for emotion in LOW_VARIANCE_EMOTION_LABELS
             ),
         ),
         "top1_accuracy": top1_accuracy,
