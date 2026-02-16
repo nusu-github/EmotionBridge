@@ -32,9 +32,13 @@ train:
   log_every_steps: 50
   gradient_accumulation_steps: 2
   mixed_precision: "fp16"
+  emotion_weight_mode: inverse_mean
+  emotion_weight_epsilon: 0.0001
+  emotion_weight_normalize: true
   emotion_weights: null
 
 eval:
   go_macro_mse_max: 0.05
-  go_min_pearson: 0.5
+  go_top6_min_pearson: 0.5
+  go_anger_trust_min_pearson: 0.3
   go_top1_acc_min: 0.6

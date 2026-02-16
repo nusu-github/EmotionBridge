@@ -44,14 +44,19 @@ class TrainConfig:
     log_every_steps: int = 50
     gradient_accumulation_steps: int = 1
     mixed_precision: str = "no"
+    emotion_weight_mode: str = "inverse_mean"
+    emotion_weight_epsilon: float = 1e-4
+    emotion_weight_normalize: bool = True
     emotion_weights: list[float] | None = None
 
 
 @dataclass(slots=True)
 class EvalConfig:
     go_macro_mse_max: float = 0.05
-    go_min_pearson: float = 0.5
+    go_top6_min_pearson: float = 0.5
+    go_anger_trust_min_pearson: float = 0.3
     go_top1_acc_min: float = 0.6
+    go_min_pearson: float | None = None
 
 
 @dataclass(slots=True)

@@ -4,8 +4,8 @@ Phase 0「テキスト感情エンコーダ」の初期実装です。設計書 
 
 - WRIME Ver1 の読込・前処理（客観ラベル抽出 / フィルタ / 正規化 / 分割）
 - BERT + 回帰ヘッドによる 8 次元感情ベクトル推定
-- 訓練ループ（MSE, AdamW, warmup+decay, Early Stopping, checkpoint）
-- 評価指標（MSE, Pearson r, Top-1 Accuracy）と Go/No-Go 判定
+- 訓練ループ（感情別重み付きMSE, AdamW, warmup+decay, Early Stopping, checkpoint）
+- 評価指標（MSE, Pearson r, Top-1 Accuracy）と感情グループ別 Go/No-Go 判定
 - 推論 API `EmotionEncoder`（単一 / バッチ）
 
 ## セットアップ
@@ -39,6 +39,17 @@ uv run accelerate launch main.py train --config configs/phase0.yaml
 
 - `gradient_accumulation_steps`: 勾配累積ステップ数
 - `mixed_precision`: `"no" | "fp16" | "bf16"`
+- `emotion_weight_mode`: `"inverse_mean" | "none"`
+- `emotion_weight_epsilon`: 逆数計算の下限値（ゼロ割防止）
+- `emotion_weight_normalize`: 重みの平均を 1 に正規化するか
+- `emotion_weights`: 手動重み（指定時は自動重みより優先）
+
+Go/No-Go 判定（`eval` セクション）:
+
+- `go_macro_mse_max`: マクロ MSE の上限（全感情共通）
+- `go_top6_min_pearson`: 上位 6 感情（`joy/sadness/anticipation/surprise/fear/disgust`）の最小 Pearson 下限
+- `go_anger_trust_min_pearson`: `anger/trust` の最小 Pearson 下限
+- `go_top1_acc_min`: Top-1 Accuracy の下限
 
 出力先（既定）:
 

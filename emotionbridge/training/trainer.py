@@ -15,7 +15,11 @@ from torch.utils.tensorboard import SummaryWriter
 from transformers import AutoTokenizer, get_linear_schedule_with_warmup
 
 from emotionbridge.config import Phase0Config, save_effective_config
-from emotionbridge.constants import EMOTION_LABELS
+from emotionbridge.constants import (
+    EMOTION_LABELS,
+    LOW_VARIANCE_EMOTION_LABELS,
+    MAJOR_EMOTION_LABELS,
+)
 from emotionbridge.data import (
     build_data_report,
     build_phase0_splits,
@@ -80,6 +84,83 @@ def _weighted_mse(
         return F.mse_loss(predictions, targets)
     squared_error = torch.square(predictions - targets)
     return (squared_error * weights).mean()
+
+
+def _resolve_loss_weights(
+    config: Phase0Config,
+    train_targets: np.ndarray,
+    device: torch.device,
+) -> tuple[torch.Tensor | None, dict[str, Any]]:
+    if train_targets.ndim != 2 or train_targets.shape[1] != len(EMOTION_LABELS):
+        msg = (
+            "train targets must be 2D and match emotion dims: "
+            f"(*, {len(EMOTION_LABELS)})"
+        )
+        raise ValueError(msg)
+
+    train_mean_intensity = train_targets.mean(axis=0).astype(np.float32)
+
+    if config.train.emotion_weights is not None:
+        weight_array = np.asarray(config.train.emotion_weights, dtype=np.float32)
+        if weight_array.shape != (len(EMOTION_LABELS),):
+            msg = (
+                "train.emotion_weights length must match number of emotions: "
+                f"{len(EMOTION_LABELS)}"
+            )
+            raise ValueError(msg)
+        if np.any(weight_array <= 0):
+            msg = "train.emotion_weights must be all positive"
+            raise ValueError(msg)
+        mode = "manual"
+    elif config.train.emotion_weight_mode == "none":
+        return (
+            None,
+            {
+                "mode": "none",
+                "weights": None,
+                "mean_intensity": {
+                    emotion: round(float(value), 6)
+                    for emotion, value in zip(
+                        EMOTION_LABELS,
+                        train_mean_intensity,
+                        strict=True,
+                    )
+                },
+            },
+        )
+    elif config.train.emotion_weight_mode == "inverse_mean":
+        safe_mean = np.maximum(train_mean_intensity, config.train.emotion_weight_epsilon)
+        weight_array = 1.0 / safe_mean
+        if config.train.emotion_weight_normalize:
+            mean_weight = max(float(weight_array.mean()), config.train.emotion_weight_epsilon)
+            weight_array = weight_array / mean_weight
+        mode = "inverse_mean"
+    else:
+        msg = (
+            "train.emotion_weight_mode must be one of: "
+            "none, inverse_mean"
+        )
+        raise ValueError(msg)
+
+    weight_tensor = torch.tensor(weight_array, dtype=torch.float32, device=device).view(
+        1,
+        -1,
+    )
+    summary: dict[str, Any] = {
+        "mode": mode,
+        "weights": {
+            emotion: round(float(value), 6)
+            for emotion, value in zip(EMOTION_LABELS, weight_array, strict=True)
+        },
+        "mean_intensity": {
+            emotion: round(float(value), 6)
+            for emotion, value in zip(EMOTION_LABELS, train_mean_intensity, strict=True)
+        },
+    }
+    if mode == "inverse_mean":
+        summary["epsilon"] = config.train.emotion_weight_epsilon
+        summary["normalize"] = config.train.emotion_weight_normalize
+    return weight_tensor, summary
 
 
 def _to_scalar(value: Any) -> float:
@@ -180,11 +261,35 @@ def _run_eval(
 def _go_no_go(metrics: dict[str, Any], config: Phase0Config) -> dict[str, Any]:
     checks = {
         "macro_mse": metrics["mse_macro"] <= config.eval.go_macro_mse_max,
-        "min_pearson": metrics["pearson_min"] >= config.eval.go_min_pearson,
+        "top6_min_pearson": (
+            metrics["pearson_top6_min"] >= config.eval.go_top6_min_pearson
+        ),
+        "anger_trust_min_pearson": (
+            metrics["pearson_anger_trust_min"]
+            >= config.eval.go_anger_trust_min_pearson
+        ),
         "top1_accuracy": metrics["top1_accuracy"] >= config.eval.go_top1_acc_min,
     }
-    checks["go"] = all(checks.values())
-    return checks
+    return {
+        **checks,
+        "go": all(checks.values()),
+        "thresholds": {
+            "macro_mse_max": config.eval.go_macro_mse_max,
+            "top6_min_pearson": config.eval.go_top6_min_pearson,
+            "anger_trust_min_pearson": config.eval.go_anger_trust_min_pearson,
+            "top1_accuracy_min": config.eval.go_top1_acc_min,
+        },
+        "values": {
+            "mse_macro": metrics["mse_macro"],
+            "pearson_top6_min": metrics["pearson_top6_min"],
+            "pearson_anger_trust_min": metrics["pearson_anger_trust_min"],
+            "top1_accuracy": metrics["top1_accuracy"],
+        },
+        "emotion_groups": {
+            "top6": MAJOR_EMOTION_LABELS,
+            "anger_trust": LOW_VARIANCE_EMOTION_LABELS,
+        },
+    }
 
 
 def _log_hparams(
@@ -207,6 +312,8 @@ def _log_hparams(
     metric_dict = {
         "hparam/mse_macro": metrics["mse_macro"],
         "hparam/pearson_min": metrics["pearson_min"],
+        "hparam/pearson_top6_min": metrics["pearson_top6_min"],
+        "hparam/pearson_anger_trust_min": metrics["pearson_anger_trust_min"],
         "hparam/top1_accuracy": metrics["top1_accuracy"],
         "hparam/test_loss": metrics["test_loss"],
     }
@@ -224,6 +331,14 @@ def _validate_accelerate_settings(config: Phase0Config) -> None:
 
     if config.train.device not in {"cpu", "cuda"}:
         msg = "train.device must be either 'cpu' or 'cuda'"
+        raise ValueError(msg)
+
+    if config.train.emotion_weight_mode not in {"none", "inverse_mean"}:
+        msg = "train.emotion_weight_mode must be one of: none, inverse_mean"
+        raise ValueError(msg)
+
+    if config.train.emotion_weight_epsilon <= 0:
+        msg = "train.emotion_weight_epsilon must be > 0"
         raise ValueError(msg)
 
 
@@ -296,22 +411,12 @@ def train_phase0(config: Phase0Config) -> dict[str, Any] | None:
         num_training_steps=total_steps,
     )
 
-    if config.train.emotion_weights is None:
-        weights = None
-    else:
-        if len(config.train.emotion_weights) != len(EMOTION_LABELS):
-            msg = (
-                "train.emotion_weights length must match number of emotions: "
-                f"{len(EMOTION_LABELS)}"
-            )
-            raise ValueError(
-                msg,
-            )
-        weights = torch.tensor(
-            config.train.emotion_weights,
-            dtype=torch.float32,
-            device=accelerator.device,
-        ).view(1, -1)
+    weights, loss_weighting = _resolve_loss_weights(
+        config,
+        splits["train"].targets,
+        accelerator.device,
+    )
+    data_report["loss_weighting"] = loss_weighting
 
     best_val_loss = float("inf")
     best_path = checkpoints_dir / "best_model.pt"
@@ -381,6 +486,16 @@ def train_phase0(config: Phase0Config) -> dict[str, Any] | None:
         if writer is not None:
             writer.add_scalar("val/mse_macro", val_metrics["mse_macro"], epoch)
             writer.add_scalar("val/pearson_min", val_metrics["pearson_min"], epoch)
+            writer.add_scalar(
+                "val/pearson_top6_min",
+                val_metrics["pearson_top6_min"],
+                epoch,
+            )
+            writer.add_scalar(
+                "val/pearson_anger_trust_min",
+                val_metrics["pearson_anger_trust_min"],
+                epoch,
+            )
             writer.add_scalar("val/top1_accuracy", val_metrics["top1_accuracy"], epoch)
             for emotion in EMOTION_LABELS:
                 writer.add_scalar(
@@ -442,6 +557,12 @@ def train_phase0(config: Phase0Config) -> dict[str, Any] | None:
     if writer is not None:
         writer.add_scalar("test/mse_macro", metrics["mse_macro"], 0)
         writer.add_scalar("test/pearson_min", metrics["pearson_min"], 0)
+        writer.add_scalar("test/pearson_top6_min", metrics["pearson_top6_min"], 0)
+        writer.add_scalar(
+            "test/pearson_anger_trust_min",
+            metrics["pearson_anger_trust_min"],
+            0,
+        )
         writer.add_scalar("test/top1_accuracy", metrics["top1_accuracy"], 0)
         for emotion in EMOTION_LABELS:
             writer.add_scalar(
@@ -468,7 +589,7 @@ def train_phase0(config: Phase0Config) -> dict[str, Any] | None:
         return None
 
     save_effective_config(config, output_dir / "effective_config.yaml")
-    _save_hparams_yaml(config, output_dir / "hparams.yaml")
+    _save_hparams_yaml(config, output_dir / "hparams.yaml", loss_weighting)
 
     with (reports_dir / "data_report.json").open("w", encoding="utf-8") as file:
         json.dump(data_report, file, ensure_ascii=False, indent=2)
@@ -481,6 +602,7 @@ def train_phase0(config: Phase0Config) -> dict[str, Any] | None:
             {
                 "metrics": metrics,
                 "go_no_go": go_no_go,
+                "loss_weighting": loss_weighting,
                 "error_analysis": error_analysis,
             },
             file,
@@ -507,13 +629,20 @@ def train_phase0(config: Phase0Config) -> dict[str, Any] | None:
         "history": history,
         "metrics": metrics,
         "go_no_go": go_no_go,
+        "loss_weighting": loss_weighting,
         "error_analysis": error_analysis,
     }
 
 
-def _save_hparams_yaml(config: Phase0Config, path: Path) -> None:
+def _save_hparams_yaml(
+    config: Phase0Config,
+    path: Path,
+    loss_weighting: dict[str, Any],
+) -> None:
     import yaml
 
+    loss_mode = str(loss_weighting.get("mode", "none"))
+    effective_weights = loss_weighting.get("weights")
     hparams = {
         "model": {
             "pretrained_model_name": config.model.pretrained_model_name,
@@ -549,8 +678,12 @@ def _save_hparams_yaml(config: Phase0Config, path: Path) -> None:
             "test_ratio": config.data.test_ratio,
         },
         "loss": {
-            "type": "MSE",
+            "type": "WeightedMSE" if loss_mode != "none" else "MSE",
+            "mode": loss_mode,
             "emotion_weights": config.train.emotion_weights,
+            "effective_emotion_weights": effective_weights,
+            "emotion_weight_epsilon": config.train.emotion_weight_epsilon,
+            "emotion_weight_normalize": config.train.emotion_weight_normalize,
         },
     }
 
