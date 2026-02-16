@@ -6,7 +6,12 @@ from pathlib import Path
 
 from transformers import AutoTokenizer
 
-from emotionbridge.config import Phase0Config, Phase1Config, load_config
+from emotionbridge.config import (
+    Phase0Config,
+    Phase1Config,
+    Phase2ValidationConfig,
+    load_config,
+)
 from emotionbridge.data import (
     build_data_report,
     build_phase0_splits,
@@ -109,6 +114,18 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="VOICEVOX speaker style ID (overrides config)",
+    )
+
+    # --- Phase 2 コマンド ---
+
+    validate_parser = subparsers.add_parser(
+        "validate-ser",
+        help="Validate SER embeddings with JVNV + kushinada (t-SNE/UMAP)",
+    )
+    validate_parser.add_argument(
+        "--config",
+        default="configs/phase2_validation.yaml",
+        help="Path to Phase 2 validation YAML config",
     )
 
     return parser
@@ -291,6 +308,98 @@ def _cmd_synthesize(
     asyncio.run(_run())
 
 
+def _cmd_validate_ser(config_path: str) -> None:
+    import numpy as np
+
+    from emotionbridge.analysis import (
+        compute_metrics,
+        load_jvnv,
+        reduce_and_plot,
+        save_report,
+    )
+    from emotionbridge.analysis.embedding_viz import plot_distance_matrix
+    from emotionbridge.analysis.emotion2vec import Emotion2vecExtractor
+    from emotionbridge.config import save_effective_config
+
+    config = load_config(config_path)
+    if not isinstance(config, Phase2ValidationConfig):
+        msg = (
+            f"Expected Phase2ValidationConfig but got {type(config).__name__}. "
+            "Check config file."
+        )
+        raise SystemExit(msg)
+
+    out_dir = Path(config.output_dir)
+
+    # 設定スナップショット保存
+    out_dir.mkdir(parents=True, exist_ok=True)
+    save_effective_config(config, out_dir / "effective_config.yaml")
+
+    # JVNVデータ読み込み
+    logger.info("JVNVコーパスを読み込み中: %s", config.jvnv_root)
+    samples = load_jvnv(config.jvnv_root)
+    logger.info("サンプル数: %d", len(samples))
+
+    audio_paths = [s.audio_path for s in samples]
+    labels = [s.emotion for s in samples]
+    speakers = [s.speaker for s in samples]
+
+    # 埋め込み抽出
+    logger.info("埋め込み抽出を開始 (モデル: %s)...", config.ser_model)
+    extractor = Emotion2vecExtractor(
+        model_id=config.ser_model,
+        device=config.device,
+    )
+    embeddings = extractor.extract(audio_paths, batch_size=config.batch_size)
+
+    # 埋め込み保存
+    emb_dir = out_dir / "embeddings"
+    emb_dir.mkdir(parents=True, exist_ok=True)
+    for key, arr in embeddings.items():
+        np.save(emb_dir / f"{key}.npy", arr)
+
+    # メタデータ保存
+    metadata = [
+        {"audio_path": s.audio_path, "emotion": s.emotion, "speaker": s.speaker}
+        for s in samples
+    ]
+    with (emb_dir / "metadata.json").open("w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+    # 可視化
+    plots_dir = out_dir / "plots"
+    logger.info("可視化を実行中...")
+    reduce_and_plot(
+        embeddings,
+        labels,
+        plots_dir,
+        speakers=speakers,
+        tsne_perplexity=config.tsne_perplexity,
+        umap_n_neighbors=config.umap_n_neighbors,
+        umap_min_dist=config.umap_min_dist,
+        random_seed=config.random_seed,
+    )
+
+    # 定量評価
+    logger.info("定量メトリクスを計算中...")
+    metrics = compute_metrics(embeddings, labels)
+    # feats層の距離行列をプロット
+    primary_layer = next(iter(embeddings))
+    plot_distance_matrix(metrics, plots_dir, layer=primary_layer)
+
+    # レポート保存
+    reports_dir = out_dir / "reports"
+    save_report(metrics, reports_dir / "embedding_analysis.json")
+
+    # 結果サマリを表示
+    print("\n=== SER埋め込み検証結果 ===")
+    for layer_name, layer_metrics in metrics["per_layer"].items():
+        print(f"\n[{layer_name}]")
+        for k, v in layer_metrics.items():
+            print(f"  {k}: {v}")
+    print(f"\n成果物出力先: {out_dir}")
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -317,6 +426,9 @@ def main() -> None:
         return
     if args.command == "synthesize":
         _cmd_synthesize(args.config, args.text, args.output, args.speaker_id)
+        return
+    if args.command == "validate-ser":
+        _cmd_validate_ser(args.config)
         return
 
     parser.error("Unknown command")

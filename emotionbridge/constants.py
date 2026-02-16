@@ -26,3 +26,6 @@ CONTROL_PARAM_NAMES: list[str] = [
     "pause_weight",
 ]
 NUM_CONTROL_PARAMS = len(CONTROL_PARAM_NAMES)
+
+# Phase 2: JVNV感情ラベル
+JVNV_EMOTION_LABELS = ["anger", "disgust", "fear", "happy", "sad", "surprise"]

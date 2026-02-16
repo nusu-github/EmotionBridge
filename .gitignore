@@ -80,3 +80,4 @@ pyrightconfig.json
 
 # Training artifacts
 artifacts/
+data/

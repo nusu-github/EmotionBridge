@@ -1,0 +1,9 @@
+jvnv_root: data/jvnv_v1
+ser_model: emotion2vec/emotion2vec_plus_large
+output_dir: artifacts/phase2/validation
+device: cuda
+batch_size: 16
+tsne_perplexity: 30.0
+umap_n_neighbors: 15
+umap_min_dist: 0.1
+random_seed: 42

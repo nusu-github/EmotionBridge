@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 EmotionBridge is a learning-based conversion engine that bridges text emotion analysis and emotional speech synthesis. Inspired by CLIP's architecture, it aligns "text emotion space" and "audio emotion space" in a shared latent space. The project is developed in phases:
 
-- **Phase 0** (current): Japanese text emotion encoder — BERT + regression head trained on WRIME dataset, outputs 8D emotion vectors (Plutchik's basic emotions)
-- **Phase 1** (planned): VOICEVOX TTS integration and audio sample generation pipeline
+- **Phase 0**: Japanese text emotion encoder — BERT + regression head trained on WRIME dataset, outputs 8D emotion vectors (Plutchik's basic emotions)
+- **Phase 1**: VOICEVOX TTS integration and audio sample generation pipeline
+- **Phase 2** (current): SER embedding validation & audio emotion encoder — emotion2vec+ で音声感情空間を構築し、Phase 0 のテキスト感情空間とアライメントする
 
 ## Commands
 
@@ -81,6 +82,15 @@ All outputs go to `artifacts/phase0/` (configurable via `train.output_dir`):
 ### Accelerate Integration
 
 Training uses HuggingFace Accelerate for mixed precision (`fp16`/`bf16`), gradient accumulation, and distributed training. The trainer wraps model/optimizer/dataloaders with `accelerator.prepare()` and uses `accelerator.gather()` for multi-process metric computation. Checkpoint saving is guarded by `accelerator.is_main_process`.
+
+### Phase 2: SER Model Decision
+
+- **採用モデル**: `emotion2vec/emotion2vec_plus_large` (FunASR ベース, ~300M params)
+- **使用レイヤー**: **feats (1024D)** — logits (9D) ではなく中間特徴量を使用
+- **理由**: ランキング学習で必要な「微妙なパラメータ差による感情ニュアンスの変化」を捉えるには、logits の 9 次元では情報量が不足する。feats (1024D) なら射影層が必要な情報を選択的に抽出できる
+- **却下モデル**: kushinada-hubert-large — JTES 4感情分類に過適合しており、6感情の分離が不十分だった (シルエットスコア 0.009〜0.049)
+- **検証コーパス**: JVNV v1 (4話者 × 6感情 × 2セッション, 1615サンプル, 48kHz)
+- **検証結果** (emotion2vec+): feats シルエットスコア 0.056, CH Index 219.8
 
 ## Language
 

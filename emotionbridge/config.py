@@ -168,6 +168,27 @@ class Phase1Config:
         return asdict(self)
 
 
+# --- Phase 2 設定 ---
+
+
+@dataclass(slots=True)
+class Phase2ValidationConfig:
+    """Phase 2 SER埋め込み検証設定。"""
+
+    jvnv_root: str = "data/jvnv_v1"
+    ser_model: str = "emotion2vec/emotion2vec_plus_large"
+    output_dir: str = "artifacts/phase2/validation"
+    device: str = "cuda"
+    batch_size: int = 16
+    tsne_perplexity: float = 30.0
+    umap_n_neighbors: int = 15
+    umap_min_dist: float = 0.1
+    random_seed: int = 42
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 def _build_section(section_type: type, payload: dict[str, Any] | None):
     import dataclasses
 
@@ -184,10 +205,14 @@ def _build_section(section_type: type, payload: dict[str, Any] | None):
     return section_type(**valid)
 
 
-def load_config(config_path: str | Path) -> Phase0Config | Phase1Config:
+def load_config(
+    config_path: str | Path,
+) -> Phase0Config | Phase1Config | Phase2ValidationConfig:
     """YAML設定ファイルを読み込む。
 
-    'voicevox' キーが存在すればPhase1Config、そうでなければPhase0Configとして解釈。
+    'jvnv_root' キーが存在すればPhase2ValidationConfig、
+    'voicevox' キーが存在すればPhase1Config、
+    そうでなければPhase0Configとして解釈。
     """
     path = Path(config_path)
     if not path.exists():
@@ -196,6 +221,9 @@ def load_config(config_path: str | Path) -> Phase0Config | Phase1Config:
 
     with path.open("r", encoding="utf-8") as file:
         raw = yaml.safe_load(file) or {}
+
+    if "jvnv_root" in raw:
+        return _build_section(Phase2ValidationConfig, raw)
 
     if "voicevox" in raw:
         return Phase1Config(
@@ -225,7 +253,7 @@ def load_config(config_path: str | Path) -> Phase0Config | Phase1Config:
 
 
 def save_effective_config(
-    config: Phase0Config | Phase1Config,
+    config: Phase0Config | Phase1Config | Phase2ValidationConfig,
     output_path: str | Path,
 ) -> None:
     path = Path(output_path)
