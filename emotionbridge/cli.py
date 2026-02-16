@@ -9,6 +9,7 @@ from transformers import AutoTokenizer
 from emotionbridge.config import (
     Phase0Config,
     Phase1Config,
+    Phase2TripletConfig,
     Phase2ValidationConfig,
     load_config,
 )
@@ -126,6 +127,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--config",
         default="configs/phase2_validation.yaml",
         help="Path to Phase 2 validation YAML config",
+    )
+
+    score_parser = subparsers.add_parser(
+        "score-triplets",
+        help="Score Phase 1 triplets with emotion2vec+ (Approach B+)",
+    )
+    score_parser.add_argument(
+        "--config",
+        default="configs/phase2_triplet.yaml",
+        help="Path to Phase 2 triplet scoring YAML config",
     )
 
     return parser
@@ -400,6 +411,26 @@ def _cmd_validate_ser(config_path: str) -> None:
     print(f"\n成果物出力先: {out_dir}")
 
 
+def _cmd_score_triplets(config_path: str) -> None:
+    from emotionbridge.alignment import Phase2TripletScorer
+
+    config = load_config(config_path)
+    if not isinstance(config, Phase2TripletConfig):
+        msg = (
+            f"Expected Phase2TripletConfig but got {type(config).__name__}. "
+            "Check config file."
+        )
+        raise SystemExit(msg)
+
+    scorer = Phase2TripletScorer(config)
+    try:
+        summary = scorer.run()
+    except FileNotFoundError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -429,6 +460,9 @@ def main() -> None:
         return
     if args.command == "validate-ser":
         _cmd_validate_ser(args.config)
+        return
+    if args.command == "score-triplets":
+        _cmd_score_triplets(args.config)
         return
 
     parser.error("Unknown command")

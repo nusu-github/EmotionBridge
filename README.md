@@ -78,3 +78,19 @@ batch = encoder.encode_batch(["嬉しい", "少し不安"])
 
 出力次元順序は固定で、`[joy, sadness, anticipation, surprise, anger, fear, disgust, trust]` です。
 
+### 4) Phase 2: 三つ組スコア付与（Approach B+）
+
+Phase 1 で生成済みの `triplet_dataset.parquet` を入力として、
+emotion2vec+ で `feats` / `logits` を抽出し、
+共通6感情マッピングによる `ser_score` を付与します。
+
+```bash
+uv run python main.py score-triplets --config configs/phase2_triplet.yaml
+```
+
+出力（既定）:
+
+- `artifacts/phase2/triplets/triplet_dataset_scored.parquet`
+- `artifacts/phase2/triplets/ser_embeddings.npz`
+- `artifacts/phase2/triplets/metadata.json`
+
