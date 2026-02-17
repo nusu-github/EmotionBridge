@@ -105,3 +105,37 @@ def heuristic_map(emotion_vec: np.ndarray) -> ControlVector:
     weighted = np.clip(weighted, -1.0, 1.0)
 
     return ControlVector.from_numpy(weighted)
+
+
+def heuristic_map_from_av(
+    *,
+    arousal: float,
+    valence: float,
+) -> ControlVector:
+    """連続軸 (Arousal/Valence) から暫定ControlVectorを生成する。
+
+    線形写像で 5D 制御空間へ投影し、[-1, +1] にクリップする。
+
+    Args:
+        arousal: 覚醒度 [-1, +1]
+        valence: 快-不快度 [-1, +1]
+
+    Returns:
+        連続軸ベースで算出したControlVector。
+
+    """
+    a = float(np.clip(arousal, -1.0, 1.0))
+    v = float(np.clip(valence, -1.0, 1.0))
+
+    control = np.array(
+        [
+            0.45 * a + 0.10 * v,
+            0.55 * a + 0.05 * v,
+            0.50 * a + 0.15 * v,
+            0.65 * a + 0.10 * v,
+            -0.60 * a - 0.10 * v,
+        ],
+        dtype=np.float32,
+    )
+    control = np.clip(control, -1.0, 1.0)
+    return ControlVector.from_numpy(control)

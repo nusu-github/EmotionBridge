@@ -5,6 +5,7 @@ import torch
 from transformers import AutoTokenizer
 
 from emotionbridge.constants import EMOTION_LABELS
+from emotionbridge.inference.axes import emotion8d_batch_to_av
 from emotionbridge.model import TextEmotionRegressor
 
 
@@ -40,6 +41,13 @@ class EmotionEncoder:
         result = self.encode_batch([text])
         return result[0]
 
+    def encode_av(self, text: str, *, normalize_weights: bool = True) -> np.ndarray:
+        result = self.encode_batch_av(
+            [text],
+            normalize_weights=normalize_weights,
+        )
+        return result[0]
+
     def encode_batch(self, texts: list[str], batch_size: int = 32) -> np.ndarray:
         if not texts:
             return np.zeros((0, len(EMOTION_LABELS)), dtype=np.float32)
@@ -60,3 +68,16 @@ class EmotionEncoder:
                 outputs.append(preds.detach().cpu().numpy())
 
         return np.vstack(outputs).astype(np.float32)
+
+    def encode_batch_av(
+        self,
+        texts: list[str],
+        *,
+        batch_size: int = 32,
+        normalize_weights: bool = True,
+    ) -> np.ndarray:
+        emotion_matrix = self.encode_batch(texts, batch_size=batch_size)
+        return emotion8d_batch_to_av(
+            emotion_matrix,
+            normalize_weights=normalize_weights,
+        )

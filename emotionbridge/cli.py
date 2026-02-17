@@ -72,6 +72,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     encode_parser.add_argument("--text", required=True, help="Input text")
     encode_parser.add_argument("--device", default="cuda", help="cuda or cpu")
+    encode_parser.add_argument(
+        "--output-format",
+        choices=["emotion8d", "av2d", "both"],
+        default="emotion8d",
+        help="Inference output format",
+    )
 
     # --- Phase 1 コマンド ---
 
@@ -115,6 +121,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="VOICEVOX speaker style ID (overrides config)",
+    )
+    synth_parser.add_argument(
+        "--mapping-space",
+        choices=["emotion8d", "av2d"],
+        default="av2d",
+        help="Control mapping space",
     )
 
     # --- Phase 2 コマンド ---
@@ -183,10 +195,33 @@ def _cmd_analyze_data(config_path: str, output_dir: str) -> None:
     print("  - emotion_means.png")
 
 
-def _cmd_encode(checkpoint: str, text: str, device: str) -> None:
+def _cmd_encode(checkpoint: str, text: str, device: str, output_format: str) -> None:
+    from emotionbridge.constants import CIRCUMPLEX_AXIS_NAMES, EMOTION_LABELS
+
     encoder = EmotionEncoder(checkpoint, device=device)
+    if output_format == "emotion8d":
+        vector = encoder.encode(text)
+        print(json.dumps(vector.tolist(), ensure_ascii=False))
+        return
+
+    if output_format == "av2d":
+        av = encoder.encode_av(text)
+        print(json.dumps(av.tolist(), ensure_ascii=False))
+        return
+
     vector = encoder.encode(text)
-    print(json.dumps(vector.tolist(), ensure_ascii=False))
+    av = encoder.encode_av(text)
+    payload = {
+        "emotion8d": {
+            label: float(value)
+            for label, value in zip(EMOTION_LABELS, vector, strict=False)
+        },
+        "continuous_axes": {
+            CIRCUMPLEX_AXIS_NAMES[0]: float(av[0]),
+            CIRCUMPLEX_AXIS_NAMES[1]: float(av[1]),
+        },
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 def _cmd_generate_samples(config_path: str) -> None:
@@ -261,9 +296,11 @@ def _cmd_synthesize(
     text: str,
     output: str,
     speaker_id: int | None,
+    mapping_space: str,
 ) -> None:
+    from emotionbridge.inference.axes import emotion8d_to_av
     from emotionbridge.tts.adapter import VoicevoxAdapter
-    from emotionbridge.tts.heuristic_mapper import heuristic_map
+    from emotionbridge.tts.heuristic_mapper import heuristic_map, heuristic_map_from_av
     from emotionbridge.tts.voicevox_client import VoicevoxClient
 
     config = load_config(config_path)
@@ -276,9 +313,13 @@ def _cmd_synthesize(
     # 感情エンコード
     encoder = EmotionEncoder(config.phase0_checkpoint, device=config.device)
     emotion_vec = encoder.encode(text)
+    av = emotion8d_to_av(emotion_vec)
 
     # ヒューリスティックマッピング
-    control = heuristic_map(emotion_vec)
+    if mapping_space == "av2d":
+        control = heuristic_map_from_av(arousal=float(av[0]), valence=float(av[1]))
+    else:
+        control = heuristic_map(emotion_vec)
 
     # 感情情報を表示
     from emotionbridge.constants import EMOTION_LABELS
@@ -288,6 +329,8 @@ def _cmd_synthesize(
         for label, v in zip(EMOTION_LABELS, emotion_vec, strict=False)
     }
     print(f"感情ベクトル: {json.dumps(emotion_dict, ensure_ascii=False)}")
+    print(f"連続軸: arousal={av[0]:.3f}, valence={av[1]:.3f}")
+    print(f"マッピング空間: {mapping_space}")
     print(
         f"制御ベクトル: pitch_shift={control.pitch_shift:.3f}, "
         f"pitch_range={control.pitch_range:.3f}, speed={control.speed:.3f}, "
@@ -447,7 +490,7 @@ def main() -> None:
         _cmd_analyze_data(args.config, args.output_dir)
         return
     if args.command == "encode":
-        _cmd_encode(args.checkpoint, args.text, args.device)
+        _cmd_encode(args.checkpoint, args.text, args.device, args.output_format)
         return
     if args.command == "generate-samples":
         _cmd_generate_samples(args.config)
@@ -456,7 +499,13 @@ def main() -> None:
         _cmd_list_speakers(args.config)
         return
     if args.command == "synthesize":
-        _cmd_synthesize(args.config, args.text, args.output, args.speaker_id)
+        _cmd_synthesize(
+            args.config,
+            args.text,
+            args.output,
+            args.speaker_id,
+            args.mapping_space,
+        )
         return
     if args.command == "validate-ser":
         _cmd_validate_ser(args.config)

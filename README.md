@@ -64,6 +64,18 @@ Go/No-Go 判定（`eval` セクション）:
 uv run python main.py encode \
   --checkpoint artifacts/phase0/checkpoints/best_model.pt \\
   --text "今日は楽しかった！"
+
+# 連続軸（Arousal/Valence）を直接出力
+uv run python main.py encode \
+  --checkpoint artifacts/phase0/checkpoints/best_model.pt \
+  --text "今日は楽しかった！" \
+  --output-format av2d
+
+# 8D と連続軸を同時出力
+uv run python main.py encode \
+  --checkpoint artifacts/phase0/checkpoints/best_model.pt \
+  --text "今日は楽しかった！" \
+  --output-format both
 ```
 
 ## Python API
@@ -73,10 +85,13 @@ from emotionbridge import EmotionEncoder
 
 encoder = EmotionEncoder("artifacts/phase0/checkpoints/best_model.pt", device="cuda")
 vec = encoder.encode("今日は楽しかった！")
+av = encoder.encode_av("今日は楽しかった！")
 batch = encoder.encode_batch(["嬉しい", "少し不安"])
+batch_av = encoder.encode_batch_av(["嬉しい", "少し不安"])
 ```
 
 出力次元順序は固定で、`[joy, sadness, anticipation, surprise, anger, fear, disgust, trust]` です。
+連続軸は `[arousal, valence]` 順で出力されます。
 
 ### 4) Phase 2: 三つ組スコア付与（Approach B+）
 
@@ -93,4 +108,16 @@ uv run python main.py score-triplets --config configs/phase2_triplet.yaml
 - `artifacts/phase2/triplets/triplet_dataset_scored.parquet`
 - `artifacts/phase2/triplets/ser_embeddings.npz`
 - `artifacts/phase2/triplets/metadata.json`
+
+### 5) Phase 3: 韻律特徴空間検証（V-01 / V-02 / V-03）
+
+実験スクリプトは `emotionbridge/scripts/` 配下に追加しています。
+セットアップと実行順序は以下を参照してください。
+
+V-03 では、`prepare_direct_matching` により感情ごとの推奨5D制御プロファイル
+（韻律特徴空間ベース）を生成できます。
+
+- `configs/experiment_config.yaml`
+- `docs/phase3/prosody_validation_setup.md`
+
 

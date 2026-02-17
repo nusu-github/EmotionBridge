@@ -1,0 +1,35 @@
+paths:
+  jvnv_root: data/jvnv_v1
+  jvnv_nv_label_dir: data/jvnv_v1/nv_label
+  jvnv_processed_audio_dir: artifacts/phase3/v01/jvnv_processed_audio
+  phase1_dataset_path: artifacts/phase1/dataset/triplet_dataset.parquet
+  phase1_output_dir: artifacts/phase1
+  output_root: artifacts/phase3
+
+extraction:
+  feature_set: eGeMAPSv02
+  feature_level: Functionals
+
+evaluation:
+  silhouette_go_threshold: 0.15
+  tsne_visual_separation_min_emotions: 4
+
+v01:
+  output_dir: artifacts/phase3/v01
+  overwrite_existing_nv_masked: false
+  equalize_speaker_stats: true
+  random_seed: 42
+  tsne_perplexities: [10.0, 30.0, 50.0]
+
+v02:
+  output_dir: artifacts/phase3/v02
+  speaker_mode: style_id
+  random_seed: 42
+  tsne_perplexities: [10.0, 30.0, 50.0]
+
+v03:
+  output_dir: artifacts/phase3/v03
+  emotion_labels_common6: [anger, disgust, fear, happy, sad, surprise]
+  nearest_k: 25
+  random_seed: 42
+  tsne_perplexity: 30.0
