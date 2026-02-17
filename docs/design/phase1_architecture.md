@@ -673,7 +673,6 @@ vv_volumeScale:        float32
 vv_prePhonemeLength:   float32
 vv_postPhonemeLength:  float32
 vv_pauseLengthScale:   float32
-ser_score:             float32 (nullable, Phase 2で付与)
 is_valid:              bool
 generation_timestamp:  string (ISO 8601)
 ```

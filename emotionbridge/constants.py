@@ -32,7 +32,7 @@ EMOTION_CIRCUMPLEX_COORDS: dict[str, tuple[float, float]] = {
     "trust": (0.20, 0.65),
 }
 
-# Phase 2/3 で使う共通6感情ラベル向け（JVNV / emotion2vec）
+# Phase 3 で使う共通6感情ラベル向け（JVNV）
 COMMON6_CIRCUMPLEX_COORDS: dict[str, tuple[float, float]] = {
     "anger": EMOTION_CIRCUMPLEX_COORDS["anger"],
     "disgust": EMOTION_CIRCUMPLEX_COORDS["disgust"],
@@ -52,5 +52,5 @@ CONTROL_PARAM_NAMES: list[str] = [
 ]
 NUM_CONTROL_PARAMS = len(CONTROL_PARAM_NAMES)
 
-# Phase 2: JVNV感情ラベル
+# Phase 3: JVNV感情ラベル
 JVNV_EMOTION_LABELS = ["anger", "disgust", "fear", "happy", "sad", "surprise"]

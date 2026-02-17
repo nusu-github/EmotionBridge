@@ -212,7 +212,6 @@ class GenerationPipeline:
                     sample_rate=validation.sample_rate,
                     style_id=task.style_id,
                     voicevox_params=result.voicevox_params or {},
-                    ser_score=None,
                     is_valid=validation.is_valid,
                     generation_timestamp=datetime.now(tz=UTC).isoformat(),
                 ),

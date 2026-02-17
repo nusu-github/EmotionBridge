@@ -8,7 +8,7 @@ EmotionBridge is a learning-based conversion engine that bridges text emotion an
 
 - **Phase 0**: Japanese text emotion encoder — BERT + regression head trained on WRIME dataset, outputs 8D emotion vectors (Plutchik's basic emotions)
 - **Phase 1**: VOICEVOX TTS integration and audio sample generation pipeline — generates (text, control_params, audio) triplets
-- **Phase 2** (current): SER embedding validation & triplet scoring — emotion2vec+ で音声感情空間を構築し、Phase 0 のテキスト感情空間とアライメントする
+- **Phase 3** (current): Prosody feature workflow（JVNV/VOICEVOXのeGeMAPS抽出・正規化・マッチング）
 
 ## Commands
 
@@ -35,13 +35,16 @@ uv run python main.py generate-samples --config configs/phase1_smoke.yaml  # qui
 uv run python main.py list-speakers                                        # VOICEVOX speakers
 uv run python main.py synthesize --text "嬉しい" --output out.wav          # single synthesis
 
-# --- Phase 2: SER Validation & Scoring ---
-uv run python main.py validate-ser --config configs/phase2_validation.yaml
-uv run python main.py score-triplets --config configs/phase2_triplet.yaml
-uv run python main.py score-triplets --config configs/phase2_triplet_smoke.yaml  # quick test
+# --- Phase 3: Prosody feature workflow ---
+uv run python -m emotionbridge.scripts.prepare_jvnv --config configs/experiment_config.yaml
+uv run python -m emotionbridge.scripts.extract_egemaps --config configs/experiment_config.yaml --source jvnv
+uv run python -m emotionbridge.scripts.extract_egemaps --config configs/experiment_config.yaml --source voicevox
+uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source jvnv
+uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source voicevox
+uv run python -m emotionbridge.scripts.match_emotion_params --config configs/experiment_config.yaml
 ```
 
-No formal test suite exists. Testing is done via smoke configs (`phase1_smoke.yaml`, `phase2_triplet_smoke.yaml`) and manual CLI invocation.
+No formal test suite exists. Testing is done via smoke configs (`phase1_smoke.yaml`, `experiment_smoke.yaml`) and manual CLI invocation.
 
 ## Architecture
 
@@ -56,14 +59,12 @@ The system separates **shared emotion latent space** (semantic alignment, d-dime
 ### Configuration System
 
 `configs/*.yaml` → `config.py` dataclasses. `load_config()` auto-detects config type by key presence:
-- `jvnv_root` → `Phase2ValidationConfig`
-- `phase1_dataset_path` → `Phase2TripletConfig`
 - `voicevox` → `Phase1Config`
 - Otherwise → `Phase0Config`
 
 Phase 0: `Phase0Config` = `DataConfig` + `ModelConfig` + `TrainConfig` + `EvalConfig`
 Phase 1: `Phase1Config` = `VoicevoxConfig` + `ControlSpaceConfig` + `GridConfig` + `TextSelectionConfig` + `ValidationConfig` + `GenerationConfig`
-Phase 2: `Phase2ValidationConfig` (JVNV + embedding viz) / `Phase2TripletConfig` (scoring)
+Phase 3 scripts use `configs/experiment_config.yaml` with `emotionbridge/scripts/common.py::load_experiment_config`
 
 ### Phase 0 Data Flow
 
@@ -95,21 +96,6 @@ TextSelector.select() — stratified sampling from WRIME splits (texts_per_emoti
 
 Pipeline (`generation/pipeline.py`) supports checkpoint/resume via `generation_progress.json`. Async batch synthesis with `asyncio.Semaphore` concurrency control. Phase 1 requires a running VOICEVOX Engine (default: `http://localhost:50021`).
 
-### Phase 2 Data Flow
-
-**Validation** (`validate-ser`): JVNV v1 corpus (4 speakers x 6 emotions) → emotion2vec+ extraction (feats 1024D + logits 9D) → t-SNE/UMAP visualization → silhouette scores, CH index
-
-**Triplet Scoring** (`score-triplets`): Load Phase 1 parquet → resolve audio paths → emotion2vec+ extraction → cosine similarity between WRIME 6-emotion subset and emotion2vec logits 6-emotion subset → `ser_score` column
-
-Category mapping (Approach B+) — common 6 emotions: joy↔happy, sadness↔sad, surprise↔surprised, anger↔angry, fear↔fearful, disgust↔disgusted. Excluded: anticipation/trust (WRIME only), neutral/other/unknown (emotion2vec only). Mapping logic in `alignment/category_mapper.py`.
-
-### Phase 2: SER Model Decision
-
-- **採用**: `emotion2vec/emotion2vec_plus_large` (FunASR, ~300M params), **feats (1024D)** layer
-- **理由**: logits 9D では微妙なパラメータ差による感情ニュアンスの変化を捉えるには情報量不足。feats なら射影層が必要な情報を選択的に抽出可能
-- **却下**: kushinada-hubert-large — JTES 4感情分類に過適合、6感情分離不十分 (シルエットスコア 0.009〜0.049)
-- **検証結果** (JVNV v1): feats シルエットスコア 0.056, CH Index 219.8
-
 ### Training Artifacts
 
 ```
@@ -123,9 +109,10 @@ artifacts/
 │   ├── dataset/triplet_dataset.parquet, metadata.json
 │   ├── checkpoints/generation_progress.json
 │   └── reports/generation_report.json
-└── phase2/
-    ├── validation/embeddings/, plots/, reports/
-    └── triplets/triplet_dataset_scored.parquet, ser_embeddings.npz, metadata.json
+└── phase3/
+  ├── v01/  # JVNV preprocessing/extraction/normalization
+  ├── v02/  # VOICEVOX extraction/normalization
+  └── v03/  # matching results and reports
 ```
 
 ### Accelerate Integration

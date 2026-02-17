@@ -63,13 +63,6 @@ Phase 1 はテキスト感情ベクトルと TTS 制御パラメータの対応�
 |   Parquet + メタデータ JSON  |
 |   → TripletDataset           |
 +------------------------------+
-      |
-      v
-+------------------------------+
-| 7. SER ラベリング            |
-|   (Phase 2 プレースホルダ)   |
-|   → ser_score = NaN          |
-+------------------------------+
 ```
 
 ---
@@ -593,8 +586,6 @@ class TripletRecord:
     # VOICEVOX メタデータ
     style_id: int
     voicevox_params: dict[str, float]    # AudioQuery のスケール値（変換後）
-    # SER (Phase 2 で付与)
-    ser_score: float | None              # Phase 1 では None
     # 品質フラグ
     is_valid: bool
     generation_timestamp: str            # ISO 8601
@@ -653,7 +644,6 @@ vv_intonationScale:    float32
 vv_speedScale:         float32
 vv_volumeScale:        float32
 vv_pauseLengthScale:   float32
-ser_score:             float32 (nullable, Phase 2 で付与)
 is_valid:              bool
 generation_timestamp:  string (ISO 8601)
 ```
@@ -970,7 +960,7 @@ VOICEVOX Engine は HTTP API であり、合成処理の大部分は I/O バウ�
 
 - 列指向圧縮によりストレージ効率が高い
 - pandas / polars で高速に読み書き可能
-- 型情報がスキーマに埋め込まれ、nullable カラム（ser_score）を自然に表現できる
+- 型情報がスキーマに埋め込まれ、列定義の整合性を保ちやすい
 - JSON Lines より圧縮率が高く、数万レコードの一括読み込みが高速
 
 ### Q4: なぜ制御パラメータ空間を [-1, +1] に正規化するか？

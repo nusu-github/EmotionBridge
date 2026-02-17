@@ -1,7 +1,0 @@
-phase1_dataset_path: artifacts/phase1/dataset/triplet_dataset.parquet
-phase1_output_dir: artifacts/phase1
-ser_model: emotion2vec/emotion2vec_plus_large
-output_dir: artifacts/phase2/triplets
-device: cuda
-batch_size: 16
-max_records: null

@@ -35,7 +35,6 @@ class TripletRecord:
     sample_rate: int
     style_id: int
     voicevox_params: dict[str, float]
-    ser_score: float | None
     is_valid: bool
     generation_timestamp: str
 
@@ -64,7 +63,6 @@ _PARQUET_SCHEMA = pa.schema(
         pa.field("vv_prePhonemeLength", pa.float32()),
         pa.field("vv_postPhonemeLength", pa.float32()),
         pa.field("vv_pauseLengthScale", pa.float32()),
-        pa.field("ser_score", pa.float32()),
         pa.field("is_valid", pa.bool_()),
         pa.field("generation_timestamp", pa.string()),
     ],
@@ -108,7 +106,6 @@ def save_dataset(records: list[TripletRecord], output_path: Path) -> None:
     columns["style_id"] = []
     for key in _VV_PARAM_KEYS:
         columns[f"vv_{key}"] = []
-    columns["ser_score"] = []
     columns["is_valid"] = []
     columns["generation_timestamp"] = []
 
@@ -133,7 +130,6 @@ def save_dataset(records: list[TripletRecord], output_path: Path) -> None:
         for key in _VV_PARAM_KEYS:
             columns[f"vv_{key}"].append(rec.voicevox_params.get(key, 0.0))
 
-        columns["ser_score"].append(rec.ser_score)
         columns["is_valid"].append(rec.is_valid)
         columns["generation_timestamp"].append(rec.generation_timestamp)
 
@@ -176,9 +172,6 @@ def load_dataset(path: Path) -> list[TripletRecord]:
             if col_name in columns:
                 voicevox_params[key] = float(columns[col_name][i])
 
-        ser_val = columns["ser_score"][i]
-        ser_score = float(ser_val) if ser_val is not None else None
-
         records.append(
             TripletRecord(
                 text_id=int(columns["text_id"][i]),
@@ -192,7 +185,6 @@ def load_dataset(path: Path) -> list[TripletRecord]:
                 sample_rate=int(columns["sample_rate"][i]),
                 style_id=int(columns["style_id"][i]),
                 voicevox_params=voicevox_params,
-                ser_score=ser_score,
                 is_valid=bool(columns["is_valid"][i]),
                 generation_timestamp=str(columns["generation_timestamp"][i]),
             ),
