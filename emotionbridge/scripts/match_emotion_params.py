@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -15,6 +15,9 @@ from emotionbridge.scripts.common import (
     save_markdown,
     write_parquet,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +54,88 @@ def _feature_columns(df: pd.DataFrame) -> list[str]:
 
 def _control_columns(df: pd.DataFrame) -> list[str]:
     return sorted([name for name in df.columns if name.startswith("ctrl_")])
+
+
+def _feature_mapping(feature_names: list[str], values: np.ndarray) -> dict[str, float]:
+    return {
+        feature: float(value)
+        for feature, value in zip(feature_names, values, strict=False)
+    }
+
+
+def _build_jvnv_profiles_payload(
+    *,
+    jvnv_df: pd.DataFrame,
+    feature_cols: list[str],
+    target_emotions: list[str],
+    jvnv_path: Path,
+    v01_dir: Path,
+) -> dict[str, Any]:
+    covariance_dir = v01_dir / "covariance"
+    covariance_dir.mkdir(parents=True, exist_ok=True)
+
+    profiles: dict[str, Any] = {}
+    for emotion in target_emotions:
+        subset = jvnv_df[jvnv_df["emotion_common6"] == emotion]
+        if subset.empty:
+            continue
+
+        feature_matrix = subset[feature_cols].to_numpy(dtype=np.float64, copy=False)
+        centroid = feature_matrix.mean(axis=0)
+        stddev = feature_matrix.std(axis=0, ddof=0)
+        if len(feature_matrix) > 1:
+            covariance = np.cov(feature_matrix, rowvar=False, bias=True)
+        else:
+            covariance = np.zeros(
+                (len(feature_cols), len(feature_cols)),
+                dtype=np.float64,
+            )
+
+        covariance_path = covariance_dir / f"{emotion}_cov.npy"
+        np.save(covariance_path, covariance)
+
+        profiles[emotion] = {
+            "num_samples": len(subset),
+            "centroid": _feature_mapping(feature_cols, centroid),
+            "stddev": _feature_mapping(feature_cols, stddev),
+            "covariance_diag": [float(value) for value in np.diag(covariance)],
+            "covariance_full_path": str(covariance_path),
+        }
+
+    return {
+        "version": "1.0",
+        "feature_set": "eGeMAPSv02",
+        "feature_count": len(feature_cols),
+        "normalization": "speaker_zscore",
+        "source_normalized_path": str(jvnv_path),
+        "profiles": profiles,
+    }
+
+
+def _build_recommended_params_payload(
+    *,
+    summary: dict[str, Any],
+    target_emotions: list[str],
+    nearest_k: int,
+) -> dict[str, Any]:
+    emotions: dict[str, dict[str, float]] = {}
+    for emotion in target_emotions:
+        emotion_summary = summary.get(emotion)
+        if not emotion_summary:
+            continue
+
+        control_summary = emotion_summary["control_summary"]
+        emotions[emotion] = {
+            control: float(values["median"])
+            for control, values in control_summary.items()
+        }
+
+    return {
+        "version": "1.0",
+        "nearest_k": int(nearest_k),
+        "aggregation": "median",
+        "emotions": emotions,
+    }
 
 
 def _canon_jvnv(label: str) -> str | None:
@@ -163,6 +248,7 @@ def run_matching(
             values = nearest_df[control].to_numpy(dtype=np.float64)
             controls_summary[control] = {
                 "mean": float(np.mean(values)),
+                "median": float(np.median(values)),
                 "std": float(np.std(values, ddof=0)),
                 "min": float(np.min(values)),
                 "max": float(np.max(values)),
@@ -192,7 +278,30 @@ def run_matching(
         "summary": summary,
         "output_matches": str(output_matches),
     }
-    save_json(payload, v03_dir / "emotion_param_matches.json")
+    output_json = v03_dir / "emotion_param_matches.json"
+    save_json(payload, output_json)
+
+    profiles_payload = _build_jvnv_profiles_payload(
+        jvnv_df=jvnv_df,
+        feature_cols=feature_cols,
+        target_emotions=target_emotions,
+        jvnv_path=jvnv_path,
+        v01_dir=v01_dir,
+    )
+    profiles_path = v01_dir / "jvnv_emotion_profiles.json"
+    save_json(profiles_payload, profiles_path)
+
+    recommended_params_payload = _build_recommended_params_payload(
+        summary=summary,
+        target_emotions=target_emotions,
+        nearest_k=top_k,
+    )
+    recommended_params_path = v03_dir / "recommended_params.json"
+    save_json(recommended_params_payload, recommended_params_path)
+
+    payload["output_summary"] = str(output_json)
+    payload["jvnv_profiles"] = str(profiles_path)
+    payload["recommended_params"] = str(recommended_params_path)
 
     report_lines = [
         "# Emotion-Parameter Matching Report",
@@ -216,6 +325,7 @@ def run_matching(
             report_lines.append(
                 "- "
                 f"{control}: mean={control_values['mean']:.4f}, "
+                f"median={control_values['median']:.4f}, "
                 f"std={control_values['std']:.4f}, "
                 f"range=[{control_values['min']:.4f}, {control_values['max']:.4f}]",
             )

@@ -7,12 +7,15 @@ from pathlib import Path
 from transformers import AutoTokenizer
 
 from emotionbridge.config import (
+    Phase0ClassifierConfig,
     Phase0Config,
     Phase1Config,
     load_config,
 )
 from emotionbridge.data import (
+    build_classifier_data_report,
     build_data_report,
+    build_phase0_classifier_splits,
     build_phase0_splits,
     estimate_unk_ratio,
     plot_cooccurrence_matrix,
@@ -20,7 +23,7 @@ from emotionbridge.data import (
     plot_intensity_histograms,
 )
 from emotionbridge.inference import EmotionEncoder
-from emotionbridge.training import train_phase0
+from emotionbridge.training import train_phase0, train_phase0_classifier
 
 logger = logging.getLogger(__name__)
 
@@ -127,35 +130,98 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Control mapping space",
     )
 
+    bridge_parser = subparsers.add_parser(
+        "bridge",
+        help="Synthesize emotional speech with classifier+generator+style mapping",
+    )
+    bridge_parser.add_argument("--text", required=True, help="Input text")
+    bridge_parser.add_argument(
+        "--output",
+        default="output.wav",
+        help="Output WAV file path",
+    )
+    bridge_parser.add_argument(
+        "--character",
+        default="zundamon",
+        help="Character key in style mapping JSON (e.g., zundamon)",
+    )
+    bridge_parser.add_argument(
+        "--classifier-checkpoint",
+        default="artifacts/phase0_v2/checkpoints/best_model.pt",
+        help="Path to classifier checkpoint",
+    )
+    bridge_parser.add_argument(
+        "--generator-checkpoint",
+        default="artifacts/phase3b/checkpoints/best_generator.pt",
+        help="Path to generator checkpoint",
+    )
+    bridge_parser.add_argument(
+        "--style-mapping",
+        default="artifacts/phase3/style_mapping.json",
+        help="Path to style mapping JSON",
+    )
+    bridge_parser.add_argument(
+        "--voicevox-url",
+        default="http://127.0.0.1:50021",
+        help="VOICEVOX Engine URL",
+    )
+    bridge_parser.add_argument(
+        "--fallback-threshold",
+        type=float,
+        default=0.3,
+        help="Fallback threshold for max emotion probability",
+    )
+    bridge_parser.add_argument("--device", default="cuda", help="cuda or cpu")
+
     return parser
 
 
 def _cmd_train(config_path: str) -> None:
     config = load_config(config_path)
-    if not isinstance(config, Phase0Config):
+    if isinstance(config, Phase0ClassifierConfig):
+        result = train_phase0_classifier(config)
+    elif isinstance(config, Phase0Config):
+        result = train_phase0(config)
+    else:
         msg = (
-            f"Expected Phase0Config but got {type(config).__name__}. Check config file."
+            "Expected Phase0Config/Phase0ClassifierConfig but got "
+            f"{type(config).__name__}. Check config file."
         )
         raise SystemExit(msg)
-    result = train_phase0(config)
+
     if result is not None:
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def _cmd_analyze_data(config_path: str, output_dir: str) -> None:
     config = load_config(config_path)
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    if isinstance(config, Phase0ClassifierConfig):
+        splits, metadata = build_phase0_classifier_splits(config.data)
+        report = build_classifier_data_report(splits, metadata)
+
+        with (out / "data_report.json").open("w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        print(f"\nReport saved to {out / 'data_report.json'}")
+        print(
+            "分類タスク用analyze-dataでは強度ヒストグラム等の8D回帰向け図は出力しません。",
+        )
+        return
+
     if not isinstance(config, Phase0Config):
         msg = (
             f"Expected Phase0Config but got {type(config).__name__}. Check config file."
         )
         raise SystemExit(msg)
+
     splits, metadata = build_phase0_splits(config.data)
     tokenizer = AutoTokenizer.from_pretrained(config.model.pretrained_model_name)
     report = build_data_report(splits, metadata)
     report["unk_ratio_train"] = estimate_unk_ratio(tokenizer, splits["train"].texts)
-
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
 
     with (out / "data_report.json").open("w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
@@ -172,7 +238,7 @@ def _cmd_analyze_data(config_path: str, output_dir: str) -> None:
 
 
 def _cmd_encode(checkpoint: str, text: str, device: str, output_format: str) -> None:
-    from emotionbridge.constants import CIRCUMPLEX_AXIS_NAMES, EMOTION_LABELS
+    from emotionbridge.constants import CIRCUMPLEX_AXIS_NAMES
 
     encoder = EmotionEncoder(checkpoint, device=device)
     if output_format == "emotion8d":
@@ -181,17 +247,32 @@ def _cmd_encode(checkpoint: str, text: str, device: str, output_format: str) -> 
         return
 
     if output_format == "av2d":
-        av = encoder.encode_av(text)
+        try:
+            av = encoder.encode_av(text)
+        except NotImplementedError as exc:
+            raise SystemExit(str(exc)) from exc
         print(json.dumps(av.tolist(), ensure_ascii=False))
         return
 
     vector = encoder.encode(text)
+    emotion_payload = {
+        label: float(value)
+        for label, value in zip(encoder.label_names, vector, strict=False)
+    }
+
+    if encoder.is_classifier:
+        print(
+            json.dumps(
+                {"emotion": emotion_payload},
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
+        return
+
     av = encoder.encode_av(text)
     payload = {
-        "emotion8d": {
-            label: float(value)
-            for label, value in zip(EMOTION_LABELS, vector, strict=False)
-        },
+        "emotion8d": emotion_payload,
         "continuous_axes": {
             CIRCUMPLEX_AXIS_NAMES[0]: float(av[0]),
             CIRCUMPLEX_AXIS_NAMES[1]: float(av[1]),
@@ -288,6 +369,13 @@ def _cmd_synthesize(
 
     # 感情エンコード
     encoder = EmotionEncoder(config.phase0_checkpoint, device=config.device)
+    if encoder.is_classifier:
+        msg = (
+            "synthesize は8D回帰チェックポイントを前提としたヒューリスティック実装です。"
+            "分類器チェックポイントでは利用できません。"
+        )
+        raise SystemExit(msg)
+
     emotion_vec = encoder.encode(text)
     av = emotion8d_to_av(emotion_vec)
 
@@ -338,6 +426,50 @@ def _cmd_synthesize(
     asyncio.run(_run())
 
 
+def _cmd_bridge(
+    text: str,
+    output: str,
+    character: str,
+    classifier_checkpoint: str,
+    generator_checkpoint: str,
+    style_mapping: str,
+    voicevox_url: str,
+    fallback_threshold: float,
+    device: str,
+) -> None:
+    from emotionbridge.inference import create_pipeline
+
+    async def _run() -> None:
+        pipeline = await create_pipeline(
+            classifier_checkpoint=classifier_checkpoint,
+            generator_checkpoint=generator_checkpoint,
+            style_mapping=style_mapping,
+            voicevox_url=voicevox_url,
+            character=character,
+            fallback_threshold=fallback_threshold,
+            device=device,
+        )
+        try:
+            result = await pipeline.synthesize(text=text, output_path=output)
+        finally:
+            await pipeline.close()
+
+        payload = {
+            "audio_path": str(result.audio_path) if result.audio_path else None,
+            "dominant_emotion": result.dominant_emotion,
+            "emotion_probs": result.emotion_probs,
+            "control_params": result.control_params,
+            "style_id": result.style_id,
+            "style_name": result.style_name,
+            "confidence": result.confidence,
+            "is_fallback": result.is_fallback,
+            "metadata": result.metadata,
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+    asyncio.run(_run())
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -369,6 +501,19 @@ def main() -> None:
             args.output,
             args.speaker_id,
             args.mapping_space,
+        )
+        return
+    if args.command == "bridge":
+        _cmd_bridge(
+            args.text,
+            args.output,
+            args.character,
+            args.classifier_checkpoint,
+            args.generator_checkpoint,
+            args.style_mapping,
+            args.voicevox_url,
+            args.fallback_threshold,
+            args.device,
         )
         return
     parser.error("Unknown command")

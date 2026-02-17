@@ -35,6 +35,19 @@ uv run accelerate config
 uv run accelerate launch main.py train --config configs/phase0.yaml
 ```
 
+6クラス分類版（Phase 3a）:
+
+```bash
+uv run python main.py analyze-data --config configs/phase0_classifier.yaml --output-dir artifacts/phase0_v2/reports
+uv run python main.py train --config configs/phase0_classifier.yaml
+```
+
+スモーク実行（軽量）:
+
+```bash
+uv run python main.py analyze-data --config configs/phase0_classifier_smoke.yaml --output-dir artifacts/phase0_v2_smoke/reports
+```
+
 `configs/phase0.yaml` の `train` セクションで以下を調整できます。
 
 - `gradient_accumulation_steps`: 勾配累積ステップ数
@@ -103,5 +116,40 @@ V-03 では、`prepare_direct_matching` により感情ごとの推奨5D制御�
 
 - `configs/experiment_config.yaml`
 - `docs/phase3/prosody_validation_setup.md`
+
+### 5) Phase 3d: 統合推論（bridge）
+
+分類器（6D）→生成器（5D）→スタイル選択→VOICEVOX 合成を一括実行します。
+
+```bash
+uv run python main.py bridge \
+  --text "今日は楽しかった！" \
+  --output bridge.wav \
+  --character zundamon \
+  --classifier-checkpoint artifacts/phase0_v2/checkpoints/best_model.pt \
+  --generator-checkpoint artifacts/phase3b/checkpoints/best_generator.pt \
+  --style-mapping artifacts/phase3/style_mapping.json
+```
+
+### 6) Phase 3d: 主観評価パイロット（A/B・MOS・感情識別）
+
+評価刺激と回答テンプレートを生成:
+
+```bash
+uv run python -m emotionbridge.scripts.prepare_subjective_eval \
+  --dataset-path artifacts/phase1_multistyle_smoke/dataset/triplet_dataset.parquet \
+  --output-dir artifacts/phase3/subjective_eval/pilot_v01 \
+  --character zundamon \
+  --classifier-checkpoint artifacts/phase0_v2/checkpoints/best_model.pt \
+  --generator-checkpoint artifacts/phase3b/checkpoints/best_generator.pt \
+  --style-mapping artifacts/phase3/style_mapping.json
+```
+
+回答CSVを集計（`responses/*.csv` を配置後）:
+
+```bash
+uv run python -m emotionbridge.scripts.analyze_subjective_eval \
+  --eval-dir artifacts/phase3/subjective_eval/pilot_v01
+```
 
 

@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 class GenerationTask:
     """音声生成の1単位。"""
 
-    task_id: str  # "{text_id:04d}_{param_idx:04d}"
+    task_id: str  # "{text_id:04d}_{param_idx:04d}_s{style_id:04d}"
     text_id: int
     text: str
     emotion_vec: np.ndarray
@@ -84,6 +84,13 @@ class GenerationPipeline:
         self._output_dir = Path(config.generation.output_dir)
         self._audio_dir = self._output_dir / config.generation.audio_subdir
 
+    def _style_ids(self) -> list[int]:
+        configured = self._config.voicevox.speaker_ids
+        if configured:
+            # 順序保持で重複除去
+            return list(dict.fromkeys(int(style_id) for style_id in configured))
+        return [int(self._config.voicevox.default_speaker_id)]
+
     async def run(self, splits: dict[str, PreparedSplit]) -> GenerationReport:
         """パイプライン全体を実行する。
 
@@ -110,9 +117,11 @@ class GenerationPipeline:
         # 2. タスク生成
         logger.info("生成タスクを構築中...")
         completed_ids = self._load_checkpoint()
-        style_id = self._config.voicevox.default_speaker_id
+        style_ids = self._style_ids()
         tasks: list[GenerationTask] = []
         skipped_count = 0
+
+        logger.info("対象style_id: %s", style_ids)
 
         for sel_text in selected_texts:
             text_dir = self._audio_dir / f"{sel_text.text_id:04d}"
@@ -120,33 +129,34 @@ class GenerationPipeline:
 
             params_array = self._sampler.sample(sel_text.text_id)
 
-            for param_idx in range(len(params_array)):
-                task_id = f"{sel_text.text_id:04d}_{param_idx:04d}"
+            for style_id in style_ids:
+                for param_idx in range(len(params_array)):
+                    task_id = f"{sel_text.text_id:04d}_{param_idx:04d}_s{style_id:04d}"
 
-                # チェックポイントまたは既存ファイルでスキップ
-                if completed_ids is not None and task_id in completed_ids:
-                    skipped_count += 1
-                    continue
+                    # チェックポイントまたは既存ファイルでスキップ
+                    if completed_ids is not None and task_id in completed_ids:
+                        skipped_count += 1
+                        continue
 
-                output_path = text_dir / f"{task_id}.wav"
-                if self._config.generation.skip_existing and output_path.exists():
-                    skipped_count += 1
-                    continue
+                    output_path = text_dir / f"{task_id}.wav"
+                    if self._config.generation.skip_existing and output_path.exists():
+                        skipped_count += 1
+                        continue
 
-                ctrl_row = params_array[param_idx]
-                control_vector = ControlVector.from_numpy(ctrl_row)
+                    ctrl_row = params_array[param_idx]
+                    control_vector = ControlVector.from_numpy(ctrl_row)
 
-                tasks.append(
-                    GenerationTask(
-                        task_id=task_id,
-                        text_id=sel_text.text_id,
-                        text=sel_text.text,
-                        emotion_vec=sel_text.emotion_vec,
-                        control_vector=control_vector,
-                        style_id=style_id,
-                        output_path=output_path,
-                    ),
-                )
+                    tasks.append(
+                        GenerationTask(
+                            task_id=task_id,
+                            text_id=sel_text.text_id,
+                            text=sel_text.text,
+                            emotion_vec=sel_text.emotion_vec,
+                            control_vector=control_vector,
+                            style_id=style_id,
+                            output_path=output_path,
+                        ),
+                    )
 
         total_tasks = len(tasks) + skipped_count
         logger.info(

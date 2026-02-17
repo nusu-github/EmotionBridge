@@ -54,3 +54,22 @@ NUM_CONTROL_PARAMS = len(CONTROL_PARAM_NAMES)
 
 # Phase 3: JVNV感情ラベル
 JVNV_EMOTION_LABELS = ["anger", "disgust", "fear", "happy", "sad", "surprise"]
+NUM_JVNV_EMOTIONS = len(JVNV_EMOTION_LABELS)
+
+# WRIME 8感情 -> JVNV 6感情への対応
+WRIME_TO_JVNV_MAPPING: dict[str, str] = {
+    "joy": "happy",
+    "sadness": "sad",
+    "anger": "anger",
+    "fear": "fear",
+    "disgust": "disgust",
+    "surprise": "surprise",
+}
+
+# WRIME 8Dのうち、JVNV 6感情をJVNV順で取り出すためのインデックス
+# EMOTION_LABELS = [joy, sadness, anticipation, surprise, anger, fear, disgust, trust]
+# JVNV_EMOTION_LABELS = [anger, disgust, fear, happy, sad, surprise]
+WRIME_TO_JVNV_INDICES = [4, 6, 5, 0, 1, 3]
+
+# 分類Go/No-Goで重視する感情
+KEY_EMOTION_LABELS = ["anger", "happy", "sad"]

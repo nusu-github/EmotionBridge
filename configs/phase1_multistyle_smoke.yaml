@@ -1,0 +1,52 @@
+phase0_checkpoint: artifacts/phase0/checkpoints/best_model.pt
+device: cuda
+
+data:
+  dataset_name: shunk031/wrime
+  dataset_config_name: ver1
+  text_field: sentence
+  label_source: avg_readers
+  filter_max_intensity_lte: 1
+  random_seed: 42
+
+voicevox:
+  host: 127.0.0.1
+  port: 50021
+  default_speaker_id: 3
+  speaker_ids: [3, 1, 7, 5]
+  timeout: 30.0
+  max_retries: 3
+  retry_delay: 0.5
+  output_sampling_rate: 24000
+
+control_space:
+  speed_range: [0.5, 1.5]
+  pitch_shift_range: [-0.15, 0.15]
+  pitch_range_range: [0.5, 1.5]
+  energy_range: [0.5, 1.5]
+  pause_pre_range: [0.0, 0.2]
+  pause_post_range: [0.0, 0.2]
+  pause_length_scale_range: [0.5, 1.5]
+
+grid:
+  strategy: lhs
+  lhs_samples_per_text: 2
+  random_seed: 42
+
+text_selection:
+  texts_per_emotion: 1
+  intensity_bins: 2
+  min_text_length: 5
+  max_text_length: 120
+  random_seed: 42
+
+validation:
+  min_file_size_bytes: 1024
+  min_duration_seconds: 0.1
+  min_rms_amplitude: 0.001
+
+generation:
+  output_dir: artifacts/phase1_multistyle_smoke
+  max_concurrent_requests: 3
+  checkpoint_interval: 20
+  skip_existing: true

@@ -1,0 +1,46 @@
+data:
+  dataset_name: shunk031/wrime
+  dataset_config_name: ver1
+  text_field: sentence
+  label_source: avg_readers
+  max_length: 128
+  use_official_split: false
+  filter_max_intensity_lte: 1
+  stratify_after_filter: true
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+  random_seed: 42
+  label_conversion: argmax
+  soft_label_temperature: 1.0
+
+model:
+  pretrained_model_name: tohoku-nlp/bert-base-japanese-whole-word-masking
+  bottleneck_dim: 256
+  dropout: 0.1
+  num_classes: 6
+  transfer_from: null
+
+train:
+  output_dir: artifacts/phase0_v2_smoke
+  batch_size: 16
+  num_epochs: 1
+  bert_lr: 0.00002
+  head_lr: 0.001
+  weight_decay: 0.01
+  warmup_ratio: 0.05
+  early_stopping_patience: 1
+  device: cpu
+  num_workers: 0
+  pin_memory: false
+  log_every_steps: 10
+  gradient_accumulation_steps: 1
+  mixed_precision: "no"
+  class_weight_mode: inverse_frequency
+  class_weights: null
+  use_weighted_sampler: false
+
+eval:
+  go_macro_f1_min: 0.40
+  go_key_emotion_f1_min: 0.50
+  key_emotions: [anger, happy, sad]
