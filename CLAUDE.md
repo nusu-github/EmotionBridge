@@ -41,7 +41,9 @@ uv run python -m emotionbridge.scripts.extract_egemaps --config configs/experime
 uv run python -m emotionbridge.scripts.extract_egemaps --config configs/experiment_config.yaml --source voicevox
 uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source jvnv
 uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source voicevox
-uv run python -m emotionbridge.scripts.match_emotion_params --config configs/experiment_config.yaml
+uv run python -m emotionbridge.scripts.evaluate_responsiveness --config configs/experiment_config.yaml  # feature_weights.json出力
+uv run python -m emotionbridge.scripts.align_domains --config configs/experiment_config.yaml            # クロスドメイン整合
+uv run python -m emotionbridge.scripts.match_emotion_params --config configs/experiment_config.yaml     # aligned + weighted distance
 ```
 
 No formal test suite exists. Testing is done via smoke configs (`phase1_smoke.yaml`, `experiment_smoke.yaml`) and manual CLI invocation.

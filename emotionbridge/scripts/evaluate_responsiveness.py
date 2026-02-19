@@ -192,6 +192,26 @@ def _pick_expected_features(feature_cols: list[str]) -> dict[str, list[str]]:
     return picked
 
 
+def _compute_feature_weights(
+    partial_corr: pd.DataFrame,
+    *,
+    min_corr_threshold: float = 0.05,
+) -> dict[str, float]:
+    """各特徴量のmax|偏相関|を制御可能性スコアとして算出する。
+
+    VOICEVOXの5D制御で動かせない特徴量次元にweight=0を付与し、
+    重み付き距離計算で「動かせない方向に引きずられる」のを防ぐ。
+    """
+    abs_corr = partial_corr.abs()
+    max_per_feature = abs_corr.max(axis=0)
+
+    weights: dict[str, float] = {}
+    for feature in max_per_feature.index:
+        score = float(max_per_feature[feature])
+        weights[str(feature)] = score if score >= min_corr_threshold else 0.0
+    return weights
+
+
 def _axis_responsiveness(
     partial_corr: pd.DataFrame,
     control_cols: list[str],
@@ -444,6 +464,23 @@ def run_evaluation(
             random_seed=config.v02.random_seed,
         )
 
+    feature_weights = _compute_feature_weights(
+        partial_corr,
+        min_corr_threshold=0.05,
+    )
+    num_nonzero = sum(1 for w in feature_weights.values() if w > 0)
+    save_json(
+        {
+            "version": "1.0",
+            "source": str(source_path),
+            "min_corr_threshold": 0.05,
+            "num_nonzero": num_nonzero,
+            "num_zero": len(feature_weights) - num_nonzero,
+            "weights": feature_weights,
+        },
+        v02_dir / "feature_weights.json",
+    )
+
     results = {
         "input_path": str(source_path),
         "num_rows": len(df),
@@ -458,6 +495,7 @@ def run_evaluation(
         "av_alignment": av_alignment,
         "av_gate_pass": av_gate_pass,
         "gate_pass": gate_pass,
+        "feature_weights_path": str(v02_dir / "feature_weights.json"),
     }
     save_json(results, v02_dir / "v02_responsiveness_metrics.json")
 

@@ -1,5 +1,10 @@
 from .classifier import TextEmotionClassifier
-from .generator import ParameterGenerator
+from .generator import DeterministicMixer, ParameterGenerator
 from .regressor import TextEmotionRegressor
 
-__all__ = ["ParameterGenerator", "TextEmotionClassifier", "TextEmotionRegressor"]
+__all__ = [
+    "DeterministicMixer",
+    "ParameterGenerator",
+    "TextEmotionClassifier",
+    "TextEmotionRegressor",
+]

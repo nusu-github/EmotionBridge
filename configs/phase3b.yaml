@@ -1,6 +1,6 @@
 data:
   teacher_table_path: artifacts/phase3b/teacher_table/recommended_params.json
-  strategy: lookup_table_dirichlet
+  strategy: deterministic
   samples_per_emotion: 300
   dirichlet_alpha_dominant: 10.0
   dirichlet_alpha_other: 1.0

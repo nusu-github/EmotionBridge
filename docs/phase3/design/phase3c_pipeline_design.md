@@ -690,7 +690,9 @@ classification_accuracy[emotion] = (
 | fear | 参考値 | 分離が弱い (fear-surprise: 0.026) |
 | surprise | 参考値 | 分離が弱い |
 
-fear/surprise/disgust は韻律分離が弱いため目標値を設けない（USDM EB3-G01-01-002 準拠）。
+fear/surprise/disgust は韻律分離が弱いため目標値を設けない。
+
+> **注記**: EB3-G01-01-002（感情分類一致率）は廃止済み。Phase 0はテキスト感情分類器であり生成音声を処理できないため。評価はEB3-G01-01-001（韻律距離）とEB3-G01-01-003（MAE）で実施する。
 
 #### C.1.3 パラメータ予測 MAE
 

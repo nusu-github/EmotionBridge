@@ -6,10 +6,11 @@ from typing import Any
 
 import numpy as np
 import torch
+from torch import nn
 
 from emotionbridge.constants import CONTROL_PARAM_NAMES, JVNV_EMOTION_LABELS
 from emotionbridge.inference.encoder import EmotionEncoder
-from emotionbridge.model import ParameterGenerator
+from emotionbridge.model import DeterministicMixer, ParameterGenerator
 from emotionbridge.tts.adapter import VoicevoxAdapter
 from emotionbridge.tts.types import ControlVector
 from emotionbridge.tts.voicevox_client import VoicevoxClient
@@ -83,7 +84,7 @@ class EmotionBridgePipeline:
         self,
         *,
         classifier: EmotionEncoder,
-        generator: ParameterGenerator,
+        generator: nn.Module,
         generator_device: torch.device,
         style_selector: RuleBasedStyleSelector,
         voicevox_client: VoicevoxClient,
@@ -199,7 +200,7 @@ def _load_generator_checkpoint(
     checkpoint_path: str | Path,
     *,
     device: str,
-) -> tuple[ParameterGenerator, torch.device]:
+) -> tuple[nn.Module, torch.device]:
     path = Path(checkpoint_path)
     if not path.exists():
         msg = f"generator checkpoint not found: {path}"
@@ -210,28 +211,43 @@ def _load_generator_checkpoint(
     )
 
     checkpoint = torch.load(path, map_location=device_obj)
-    model_config = (
-        checkpoint.get("config", {}).get("model", {})
-        if isinstance(checkpoint, dict)
-        else {}
-    )
-    hidden_dim = int(model_config.get("hidden_dim", 64))
-    dropout = float(model_config.get("dropout", 0.3))
+    model_type = checkpoint.get("model_type", "parameter_generator")
 
-    model = ParameterGenerator(hidden_dim=hidden_dim, dropout=dropout).to(device_obj)
     model_state_dict = checkpoint.get("model_state_dict")
     if model_state_dict is None:
         msg = "model_state_dict not found in generator checkpoint"
         raise ValueError(msg)
 
-    current_state_dict = model.state_dict()
-    compatible_state_dict = {
-        key: value
-        for key, value in model_state_dict.items()
-        if key in current_state_dict and current_state_dict[key].shape == value.shape
-    }
+    model: nn.Module
+    if model_type == "deterministic_mixer":
+        recommended = checkpoint.get("recommended_params")
+        if recommended is None:
+            msg = "recommended_params not found in deterministic_mixer checkpoint"
+            raise ValueError(msg)
+        teacher_matrix = torch.tensor(recommended, dtype=torch.float32)
+        model = DeterministicMixer(teacher_matrix).to(device_obj)
+        model.load_state_dict(model_state_dict, strict=True)
+    else:
+        model_config = (
+            checkpoint.get("config", {}).get("model", {})
+            if isinstance(checkpoint, dict)
+            else {}
+        )
+        hidden_dim = int(model_config.get("hidden_dim", 64))
+        dropout = float(model_config.get("dropout", 0.3))
 
-    model.load_state_dict(compatible_state_dict, strict=False)
+        model = ParameterGenerator(hidden_dim=hidden_dim, dropout=dropout).to(
+            device_obj,
+        )
+        current_state_dict = model.state_dict()
+        compatible_state_dict = {
+            key: value
+            for key, value in model_state_dict.items()
+            if key in current_state_dict
+            and current_state_dict[key].shape == value.shape
+        }
+        model.load_state_dict(compatible_state_dict, strict=False)
+
     model.eval()
     return model, device_obj
 

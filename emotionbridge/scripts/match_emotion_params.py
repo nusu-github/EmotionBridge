@@ -52,6 +52,36 @@ def _feature_columns(df: pd.DataFrame) -> list[str]:
     return sorted([name for name in df.columns if name.startswith("egemaps__")])
 
 
+def _load_feature_weights(
+    v02_dir: Path,
+    feature_cols: list[str],
+) -> np.ndarray | None:
+    """V-02の偏相関から算出した特徴量重みを読み込む。
+
+    VOICEVOXの5D制御で動かせない次元（jitter/shimmer等）の重みを低くし、
+    距離計算が制御不能な方向に引きずられるのを防ぐ。
+    """
+    import json
+
+    weights_path = v02_dir / "feature_weights.json"
+    if not weights_path.exists():
+        return None
+
+    with weights_path.open("r", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    weights_dict = payload.get("weights", {})
+    weights = np.array(
+        [float(weights_dict.get(col, 0.0)) for col in feature_cols],
+        dtype=np.float32,
+    )
+
+    total = weights.sum()
+    if total > 0:
+        weights = weights * len(feature_cols) / total
+    return weights
+
+
 def _control_columns(df: pd.DataFrame) -> list[str]:
     return sorted([name for name in df.columns if name.startswith("ctrl_")])
 
@@ -190,16 +220,19 @@ def run_matching(
     v03_dir = resolve_path(config.v03.output_dir)
     v03_dir.mkdir(parents=True, exist_ok=True)
 
-    jvnv_path = (
-        resolve_path(jvnv_normalized)
-        if jvnv_normalized
-        else v01_dir / "jvnv_egemaps_normalized.parquet"
-    )
-    voice_path = (
-        resolve_path(voicevox_normalized)
-        if voicevox_normalized
-        else v02_dir / "voicevox_egemaps_normalized.parquet"
-    )
+    if jvnv_normalized:
+        jvnv_path = resolve_path(jvnv_normalized)
+    elif config.v03.cross_domain_alignment:
+        jvnv_path = v03_dir / "jvnv_egemaps_aligned.parquet"
+    else:
+        jvnv_path = v01_dir / "jvnv_egemaps_normalized.parquet"
+
+    if voicevox_normalized:
+        voice_path = resolve_path(voicevox_normalized)
+    elif config.v03.cross_domain_alignment:
+        voice_path = v03_dir / "voicevox_egemaps_aligned.parquet"
+    else:
+        voice_path = v02_dir / "voicevox_egemaps_normalized.parquet"
     if not jvnv_path.exists() or not voice_path.exists():
         msg = f"Input file missing: jvnv={jvnv_path.exists()}, voicevox={voice_path.exists()}"
         raise FileNotFoundError(msg)
@@ -223,6 +256,18 @@ def run_matching(
     target_emotions = config.v03.emotion_labels_common6
     top_k = nearest_k if nearest_k is not None else config.v03.nearest_k
 
+    feature_weights: np.ndarray | None = None
+    distance_metric = config.v03.distance_metric
+    if distance_metric == "weighted_euclidean":
+        feature_weights = _load_feature_weights(v02_dir, feature_cols)
+        if feature_weights is None:
+            logger.warning(
+                "重み付き距離を要求されたが feature_weights.json が見つからない: %s"
+                " → unweighted L2にフォールバック",
+                v02_dir,
+            )
+            distance_metric = "euclidean"
+
     matched_rows: list[dict[str, Any]] = []
     summary: dict[str, Any] = {}
 
@@ -236,7 +281,11 @@ def run_matching(
         centroid = (
             j_subset[feature_cols].to_numpy(dtype=np.float32, copy=False).mean(axis=0)
         )
-        distances = np.linalg.norm(voice_features - centroid[None, :], axis=1)
+        diff = voice_features - centroid[None, :]
+        if distance_metric == "weighted_euclidean" and feature_weights is not None:
+            distances = np.sqrt(np.sum(feature_weights[None, :] * diff**2, axis=1))
+        else:
+            distances = np.linalg.norm(diff, axis=1)
         nearest_indices = np.argsort(distances)[:top_k]
         nearest_df = voice_df.iloc[nearest_indices].copy()
         nearest_df["target_emotion"] = emotion
@@ -275,6 +324,8 @@ def run_matching(
         "voicevox_path": str(voice_path),
         "feature_count": len(feature_cols),
         "nearest_k": int(top_k),
+        "distance_metric": distance_metric,
+        "cross_domain_alignment": config.v03.cross_domain_alignment,
         "summary": summary,
         "output_matches": str(output_matches),
     }

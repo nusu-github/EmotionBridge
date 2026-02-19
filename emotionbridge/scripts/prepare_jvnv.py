@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import operator
 import re
 from typing import TYPE_CHECKING
 
@@ -106,6 +107,40 @@ def _mask_intervals(
     return masked
 
 
+def _excise_intervals(
+    audio: np.ndarray,
+    sample_rate: int,
+    intervals: list[tuple[float, float]],
+) -> np.ndarray:
+    """NV区間を物理的に除去し、非NV区間を連結して返す。
+
+    無音化（mask）と異なり、NV区間のサンプルを完全に除去する。
+    eGeMAPS functionals（区間統計量）は無音混入の影響を受けなくなる。
+    """
+    if not intervals:
+        return audio.copy()
+
+    sorted_intervals = sorted(intervals, key=operator.itemgetter(0))
+    segments: list[np.ndarray] = []
+    current_pos = 0
+
+    for start_sec, end_sec in sorted_intervals:
+        start_idx = max(0, min(len(audio), round(start_sec * sample_rate)))
+        end_idx = max(0, min(len(audio), round(end_sec * sample_rate)))
+
+        if start_idx > current_pos:
+            segments.append(audio[current_pos:start_idx])
+        current_pos = max(current_pos, end_idx)
+
+    if current_pos < len(audio):
+        segments.append(audio[current_pos:])
+
+    if not segments:
+        return np.array([], dtype=audio.dtype)
+
+    return np.concatenate(segments)
+
+
 def _discover_jvnv_wavs(root_dir: Path) -> list[Path]:
     candidates = []
     for wav_path in sorted(root_dir.glob("*/*/*/*.wav")):
@@ -161,8 +196,25 @@ def run_prepare(config_path: str) -> dict[str, object]:
         if output_wav_path.exists() and not config.v01.overwrite_existing_nv_masked:
             pass
         else:
-            masked_audio = _mask_intervals(audio_data, sample_rate, intervals)
-            sf.write(output_wav_path, masked_audio, sample_rate)
+            nv_handling = config.v01.nv_handling
+            if nv_handling == "excise" and intervals:
+                processed_audio = _excise_intervals(audio_data, sample_rate, intervals)
+                min_duration = 0.1
+                if len(processed_audio) / sample_rate < min_duration:
+                    logger.warning(
+                        "切除後の音声が%.1f秒未満: %s (maskにフォールバック)",
+                        min_duration,
+                        utterance_id,
+                    )
+                    processed_audio = _mask_intervals(
+                        audio_data,
+                        sample_rate,
+                        intervals,
+                    )
+                    nv_handling = "mask_fallback"
+            else:
+                processed_audio = _mask_intervals(audio_data, sample_rate, intervals)
+            sf.write(output_wav_path, processed_audio, sample_rate)
 
         interval_count = len(intervals)
         nv_duration = float(sum(end - start for start, end in intervals))
@@ -181,6 +233,7 @@ def run_prepare(config_path: str) -> dict[str, object]:
                 "nv_interval_count": interval_count,
                 "nv_duration_seconds": nv_duration,
                 "audio_duration_seconds": duration_sec,
+                "nv_handling": config.v01.nv_handling,
                 "sample_rate": sample_rate,
             },
         )

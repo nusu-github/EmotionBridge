@@ -20,6 +20,7 @@ v01:
   equalize_speaker_stats: true
   random_seed: 42
   tsne_perplexities: [10.0, 30.0, 50.0]
+  nv_handling: excise
 
 v02:
   output_dir: artifacts/phase3/v02
@@ -33,3 +34,6 @@ v03:
   nearest_k: 25
   random_seed: 42
   tsne_perplexity: 30.0
+  cross_domain_alignment: true
+  distance_metric: weighted_euclidean
+  feature_weight_min_corr: 0.05

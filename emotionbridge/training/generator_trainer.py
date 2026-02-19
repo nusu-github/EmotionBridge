@@ -15,7 +15,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, TensorDataset
 
 from emotionbridge.constants import CONTROL_PARAM_NAMES, JVNV_EMOTION_LABELS
-from emotionbridge.model import ParameterGenerator
+from emotionbridge.model import DeterministicMixer, ParameterGenerator
 
 
 @dataclass(slots=True)
@@ -232,6 +232,97 @@ def _run_eval(
     return val_loss, mae_per_axis
 
 
+def _train_deterministic(
+    config: Phase3bConfig,
+    recommended_matrix: np.ndarray,
+    output_dir: Path,
+) -> dict[str, Any]:
+    """DeterministicMixer を教師表から直接構築して保存する。
+
+    NNの学習ループは不要。教師表の線形混合が最適解であるため、
+    学習をスキップして決定論的にチェックポイントを生成する。
+    """
+    checkpoints_dir = output_dir / "checkpoints"
+    reports_dir = output_dir / "reports"
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    model = DeterministicMixer.from_numpy(recommended_matrix)
+
+    best_path = checkpoints_dir / "best_generator.pt"
+    torch.save(
+        {
+            "model_type": "deterministic_mixer",
+            "model_state_dict": model.state_dict(),
+            "recommended_params": recommended_matrix.tolist(),
+            "emotion_labels": JVNV_EMOTION_LABELS,
+            "control_param_names": CONTROL_PARAM_NAMES,
+            "training_strategy": "deterministic",
+            "config": config.to_dict(),
+        },
+        best_path,
+    )
+
+    save_effective_generator_config(config, output_dir / "effective_config.yaml")
+
+    # pure emotion入力でMAEを計算（teacher tableとの一致確認）
+    num_emotions = len(JVNV_EMOTION_LABELS)
+    identity = np.eye(num_emotions, dtype=np.float32)
+    with torch.no_grad():
+        preds = model(torch.tensor(identity)).numpy()
+    expected = np.tanh(recommended_matrix)
+    mae_per_axis = np.mean(np.abs(preds - expected), axis=0).tolist()
+
+    mae_payload = {
+        "axis_mae": {
+            name: float(value)
+            for name, value in zip(CONTROL_PARAM_NAMES, mae_per_axis, strict=True)
+        },
+        "macro_mae": float(np.mean(mae_per_axis)),
+        "threshold": float(config.eval.mae_axis_max),
+        "axis_pass": {
+            name: bool(value <= config.eval.mae_axis_max)
+            for name, value in zip(CONTROL_PARAM_NAMES, mae_per_axis, strict=True)
+        },
+    }
+
+    go_no_go = {
+        "all_axis_mae": bool(all(mae_payload["axis_pass"].values())),
+        "go": bool(all(mae_payload["axis_pass"].values())),
+    }
+
+    with (reports_dir / "parameter_mae.json").open("w", encoding="utf-8") as file:
+        json.dump(mae_payload, file, ensure_ascii=False, indent=2)
+
+    with (reports_dir / "evaluation.json").open("w", encoding="utf-8") as file:
+        json.dump(
+            {
+                "best_epoch": 0,
+                "best_val_loss": 0.0,
+                "final_val_loss": 0.0,
+                "strategy": "deterministic",
+                "mae": mae_payload,
+                "go_no_go": go_no_go,
+            },
+            file,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    return {
+        "output_dir": str(output_dir),
+        "checkpoint": str(best_path),
+        "best_epoch": 0,
+        "best_val_loss": 0.0,
+        "final_val_loss": 0.0,
+        "mae": mae_payload,
+        "go_no_go": go_no_go,
+        "num_train_samples": 0,
+        "num_val_samples": 0,
+        "strategy": "deterministic",
+    }
+
+
 def train_phase3b_generator(config: Phase3bConfig) -> dict[str, Any]:
     _set_seed(config.data.random_seed)
     device = _resolve_device(config.train.device)
@@ -244,6 +335,9 @@ def train_phase3b_generator(config: Phase3bConfig) -> dict[str, Any]:
 
     teacher_path = Path(config.data.teacher_table_path)
     recommended_matrix = _load_teacher_table(teacher_path)
+
+    if config.data.strategy == "deterministic":
+        return _train_deterministic(config, recommended_matrix, output_dir)
 
     probs_np, targets_np, dominant = _build_augmented_dataset(
         recommended_matrix,
