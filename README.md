@@ -70,21 +70,18 @@ uv run python main.py bridge \
 ### Phase 0: テキスト感情分類器
 
 ```bash
-# 訓練（6クラス分類版）
-uv run python main.py train --config configs/phase0_classifier.yaml
-
-# 訓練（8D回帰版）
-uv run python main.py train --config configs/phase0.yaml
+# 訓練
+uv run python main.py train --config configs/classifier.yaml
 
 # Accelerate 使用（推奨）
-uv run accelerate launch main.py train --config configs/phase0.yaml
+uv run accelerate launch main.py train --config configs/classifier.yaml
 
 # データ分析
-uv run python main.py analyze-data --config configs/phase0.yaml
+uv run python main.py analyze-data --config configs/classifier.yaml
 
 # 推論
 uv run python main.py encode \
-  --checkpoint artifacts/phase0/checkpoints/best_model.pt \
+  --checkpoint artifacts/classifier/checkpoints/best_model.pt \
   --text "今日は楽しかった！"
 ```
 
@@ -92,13 +89,10 @@ uv run python main.py encode \
 
 ```bash
 # サンプル生成
-uv run python main.py generate-samples --config configs/phase1.yaml
+uv run python main.py generate-samples --config configs/audio_gen.yaml
 
 # 利用可能なキャラクター一覧
 uv run python main.py list-speakers
-
-# 単体音声合成（ヒューリスティックマッピング）
-uv run python main.py synthesize --text "嬉しい" --output out.wav
 ```
 
 ### Phase 3: 韻律特徴パイプライン
@@ -133,7 +127,7 @@ uv run python -m emotionbridge.scripts.evaluate_domain_gap --config configs/expe
 uv run python -m emotionbridge.scripts.prepare_generator_teacher
 
 # Generator 訓練
-uv run python -m emotionbridge.scripts.train_generator --config configs/phase3b.yaml
+uv run python -m emotionbridge.scripts.train_generator --config configs/generator.yaml
 ```
 
 ### Bridge: 統合推論（要 VOICEVOX Engine）
@@ -143,9 +137,9 @@ uv run python main.py bridge \
   --text "今日は楽しかった！" \
   --output output.wav \
   --character zundamon \
-  --classifier-checkpoint artifacts/phase0_v2/checkpoints/best_model.pt \
-  --generator-checkpoint artifacts/phase3b/checkpoints/best_generator.pt \
-  --style-mapping artifacts/phase3/style_mapping.json
+  --classifier-checkpoint artifacts/classifier/checkpoints/best_model.pt \
+  --generator-checkpoint artifacts/generator/checkpoints/best_generator.pt \
+  --style-mapping artifacts/prosody/style_mapping.json
 ```
 
 主要オプション:
@@ -165,30 +159,25 @@ uv run python -m emotionbridge.scripts.prepare_subjective_eval \
   --dataset-path artifacts/phase1_multistyle_smoke/dataset/triplet_dataset.parquet \
   --output-dir artifacts/phase3/subjective_eval/pilot_v01 \
   --character zundamon \
-  --classifier-checkpoint artifacts/phase0_v2/checkpoints/best_model.pt \
-  --generator-checkpoint artifacts/phase3b/checkpoints/best_generator.pt \
-  --style-mapping artifacts/phase3/style_mapping.json
+  --classifier-checkpoint artifacts/classifier/checkpoints/best_model.pt \
+  --generator-checkpoint artifacts/generator/checkpoints/best_generator.pt \
+  --style-mapping artifacts/prosody/style_mapping.json
 
 # 回答CSV集計（responses/*.csv 配置後）
 uv run python -m emotionbridge.scripts.analyze_subjective_eval \
-  --eval-dir artifacts/phase3/subjective_eval/pilot_v01
+  --eval-dir artifacts/prosody/subjective_eval/pilot_v01
 ```
 
 ## Python API
 
-### EmotionEncoder（感情分類 / 回帰）
+### EmotionEncoder（感情分類）
 
 ```python
 from emotionbridge import EmotionEncoder
 
-# 8D回帰版
-encoder = EmotionEncoder("artifacts/phase0/checkpoints/best_model.pt", device="cuda")
-vec = encoder.encode("今日は楽しかった！")          # numpy array (8,)
-batch = encoder.encode_batch(["嬉しい", "少し不安"])  # numpy array (N, 8)
-
-# 6クラス分類版
-classifier = EmotionEncoder("artifacts/phase0_v2/checkpoints/best_model.pt", device="cuda")
-probs = classifier.encode("今日は楽しかった！")  # numpy array (6,)
+encoder = EmotionEncoder("artifacts/classifier/checkpoints/best_model.pt", device="cuda")
+probs = encoder.encode("今日は楽しかった！")          # numpy array (6,)
+batch = encoder.encode_batch(["嬉しい", "少し不安"])  # numpy array (N, 6)
 ```
 
 ### Bridge Pipeline（統合推論）
@@ -197,9 +186,9 @@ probs = classifier.encode("今日は楽しかった！")  # numpy array (6,)
 from emotionbridge.inference import create_pipeline
 
 pipeline = await create_pipeline(
-    classifier_checkpoint="artifacts/phase0_v2/checkpoints/best_model.pt",
-    generator_checkpoint="artifacts/phase3b/checkpoints/best_generator.pt",
-    style_mapping="artifacts/phase3/style_mapping.json",
+    classifier_checkpoint="artifacts/classifier/checkpoints/best_model.pt",
+    generator_checkpoint="artifacts/generator/checkpoints/best_generator.pt",
+    style_mapping="artifacts/prosody/style_mapping.json",
     voicevox_url="http://127.0.0.1:50021",
     character="zundamon",
     fallback_threshold=0.3,
@@ -223,10 +212,10 @@ await pipeline.close()
 ```text
 emotionbridge/
 ├── cli.py                  # メインCLI
-├── config.py               # Phase 0/1 設定
+├── config.py               # Classifier/AudioGen 設定
 ├── constants.py            # 感情ラベル・制御パラメータ定数
 ├── data/                   # WRIME データ処理
-├── model/                  # ParameterGenerator, DeterministicMixer, TextEmotionClassifier, TextEmotionRegressor
+├── model/                  # TextEmotionClassifier, DeterministicMixer, ParameterGenerator
 ├── training/               # Phase 0 訓練, generator_trainer
 ├── inference/              # EmotionEncoder, bridge_pipeline
 ├── generation/             # Phase 1 生成パイプライン

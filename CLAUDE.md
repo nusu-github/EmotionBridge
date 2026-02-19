@@ -4,17 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-EmotionBridge is a conversion engine that bridges text emotion analysis and emotional speech synthesis. It classifies text emotion, maps the result to TTS control parameters via prosody feature matching, and synthesizes emotional speech. The project is developed in phases:
+EmotionBridge は日本語テキストから感情を分類し、韻律特徴マッチングに基づく制御パラメータ生成と VOICEVOX TTS を組み合わせて感情音声を合成する変換エンジン。
 
-- **Phase 0**: Japanese text emotion classifier — BERT + classification head trained on WRIME dataset, outputs 6-class emotion probabilities (anger, disgust, fear, happy, sad, surprise)
-- **Phase 1**: VOICEVOX TTS integration and audio sample generation pipeline — generates (text, control_params, audio) triplets
-- **Phase 3**: Prosody feature workflow — JVNV/VOICEVOX eGeMAPS extraction, cross-domain alignment, weighted matching → DeterministicMixer
-- **Bridge**: End-to-end inference pipeline — text → classifier → DeterministicMixer → VOICEVOX → emotional speech
+```
+テキスト → 感情分類（6クラス） → DeterministicMixer（6D→5D） → スタイル選択 → VOICEVOX → 感情音声
+```
+
+フェーズ構成:
+
+- **Phase 0 (Classifier)**: BERT + 分類ヘッド、WRIME → 6感情クラス（anger, disgust, fear, happy, sad, surprise）の softmax 確率を出力
+- **Phase 1 (Audio Gen)**: VOICEVOX 音声サンプル生成パイプライン — (text, control_params, audio) triplet を作成
+- **Phase 3 (Prosody)**: JVNV/VOICEVOX の eGeMAPS 抽出・クロスドメイン整合・マッチング → 教師表 → DeterministicMixer
+- **Bridge**: 統合推論パイプライン — text → classifier → DeterministicMixer → style selection → VOICEVOX → WAV
 
 ## Commands
 
 ```bash
-# Install dependencies (uses uv package manager)
+# 依存関係インストール（uv パッケージマネージャ）
 uv sync
 
 # Lint / Format / Type check
@@ -22,106 +28,129 @@ uv run ruff check .
 uv run ruff format .
 uv run ty check
 
-# --- Phase 0: Text Emotion Encoder ---
-uv run python main.py train --config configs/phase0.yaml
-uv run accelerate launch main.py train --config configs/phase0.yaml  # recommended
-uv run python main.py analyze-data --config configs/phase0.yaml
+# --- Phase 0: 感情分類器 ---
+uv run python main.py train --config configs/classifier.yaml
+uv run accelerate launch main.py train --config configs/classifier.yaml  # 推奨
+uv run python main.py analyze-data --config configs/classifier.yaml
 uv run python main.py encode \
-  --checkpoint artifacts/phase0/checkpoints/best_model.pt \
+  --checkpoint artifacts/classifier/checkpoints/best_model.pt \
   --text "今日は楽しかった！"
 
-# --- Phase 1: Audio Generation ---
-uv run python main.py generate-samples --config configs/phase1.yaml
-uv run python main.py generate-samples --config configs/phase1_smoke.yaml  # quick test (16 samples)
-uv run python main.py list-speakers                                        # VOICEVOX speakers
-uv run python main.py synthesize --text "嬉しい" --output out.wav          # single synthesis
+# --- Phase 1: 音声サンプル生成（要 VOICEVOX Engine） ---
+uv run python main.py generate-samples --config configs/audio_gen.yaml
+uv run python main.py generate-samples --config configs/audio_gen_smoke.yaml  # quick test
+uv run python main.py list-speakers
 
-# --- Phase 3: Prosody feature workflow ---
+# --- Phase 3: 韻律特徴ワークフロー（上から順に実行） ---
 uv run python -m emotionbridge.scripts.prepare_jvnv --config configs/experiment_config.yaml
 uv run python -m emotionbridge.scripts.extract_egemaps --config configs/experiment_config.yaml --source jvnv
 uv run python -m emotionbridge.scripts.extract_egemaps --config configs/experiment_config.yaml --source voicevox
 uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source jvnv
 uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source voicevox
-uv run python -m emotionbridge.scripts.evaluate_responsiveness --config configs/experiment_config.yaml  # feature_weights.json出力
-uv run python -m emotionbridge.scripts.align_domains --config configs/experiment_config.yaml            # クロスドメイン整合
-uv run python -m emotionbridge.scripts.match_emotion_params --config configs/experiment_config.yaml     # aligned + weighted distance
+uv run python -m emotionbridge.scripts.evaluate_responsiveness --config configs/experiment_config.yaml
+uv run python -m emotionbridge.scripts.align_domains --config configs/experiment_config.yaml
+uv run python -m emotionbridge.scripts.match_emotion_params --config configs/experiment_config.yaml
+uv run python -m emotionbridge.scripts.evaluate_domain_gap --config configs/experiment_config.yaml
+uv run python -m emotionbridge.scripts.prepare_generator_teacher
+uv run python -m emotionbridge.scripts.train_generator --config configs/generator.yaml
+
+# --- Bridge: 統合推論（要 VOICEVOX Engine） ---
+uv run python main.py bridge \
+  --text "今日は楽しかった！" \
+  --output output.wav \
+  --character zundamon
 ```
 
-No formal test suite exists. Testing is done via smoke configs (`phase1_smoke.yaml`, `experiment_smoke.yaml`) and manual CLI invocation.
+正式なテストスイートはない。Smoke config（`classifier_smoke.yaml`, `audio_gen_smoke.yaml`, `experiment_smoke.yaml`）と CLI 手動実行でテストする。
 
 ## Architecture
 
-### Two-space Design (Core Concept)
+### Two-space Design
 
-The system separates **shared emotion latent space** (semantic alignment, d-dimensional) from **control space** (5D TTS parameter knobs: pitch_shift, pitch_range, speed, energy, pause_weight). This separation enables TTS-agnostic operation — the semantic space stays fixed while only TTS adapters are swapped.
+**感情空間**（6D softmax 確率）と**制御空間**（5D TTS パラメータ `[-1, +1]`）を分離。感情空間は固定で、TTS アダプタ（`VoicevoxAdapter`）のみを差し替えることで TTS エンジン非依存を実現する。
 
-### Emotion Label Order (fixed)
+### Emotion Labels (2 sets)
 
-`[joy, sadness, anticipation, surprise, anger, fear, disgust, trust]` — hardcoded in `constants.py`, used throughout all modules. `anger` and `trust` are `LOW_VARIANCE_EMOTION_LABELS` with relaxed evaluation thresholds. Control space: `[pitch_shift, pitch_range, speed, energy, pause_weight]` (also in `constants.py`).
+**WRIME 8D** (legacy, `EMOTION_LABELS`): `[joy, sadness, anticipation, surprise, anger, fear, disgust, trust]`
+
+**JVNV 6D** (current, `JVNV_EMOTION_LABELS`): `[anger, disgust, fear, happy, sad, surprise]` — 全モジュールで使用。`WRIME_TO_JVNV_INDICES = [4, 6, 5, 0, 1, 3]` で 8D→6D 変換。
+
+制御空間 (`CONTROL_PARAM_NAMES`): `[pitch_shift, pitch_range, speed, energy, pause_weight]`
+
+Go/No-Go 評価で重視: `KEY_EMOTION_LABELS = ["anger", "happy", "sad"]`
+
+すべて `emotionbridge/constants.py` で定義。ラベル順序変更は全モジュールに影響するため厳禁。
 
 ### Configuration System
 
-`configs/*.yaml` → `config.py` dataclasses. `load_config()` auto-detects config type by key presence:
-- `voicevox` → `Phase1Config`
-- Otherwise → `Phase0Config`
+`configs/*.yaml` → `config.py` dataclasses。`load_config()` のキー判定ロジック:
+- `voicevox` キー → `AudioGenConfig`
+- `num_classes` / `label_conversion` / `class_weight_mode` キー → `ClassifierConfig`
+- いずれもなし → `ValueError`
 
-Phase 0: `Phase0Config` = `DataConfig` + `ModelConfig` + `TrainConfig` + `EvalConfig`
-Phase 1: `Phase1Config` = `VoicevoxConfig` + `ControlSpaceConfig` + `GridConfig` + `TextSelectionConfig` + `ValidationConfig` + `GenerationConfig`
-Phase 3 scripts use `configs/experiment_config.yaml` with `emotionbridge/scripts/common.py::load_experiment_config`
+Phase 3 スクリプトは `emotionbridge/scripts/common.py::load_experiment_config` で独自に設定を読む。
 
-### Phase 0 Data Flow
-
-```
-WRIME dataset (shunk031/wrime on HF Hub)
-  → data/wrime.py: load, filter (max_intensity > 1), normalize (/3.0), stratify, split
-  → training/trainer.py: TextBatchCollator tokenizes on-the-fly, trains with weighted MSE
-  → model/regressor.py: BERT [CLS] → Dropout → Linear(768→256) → ReLU → Dropout → Linear(256→8) → Sigmoid
-  → artifacts/phase0/checkpoints/best_model.pt
-  → inference/encoder.py: EmotionEncoder loads checkpoint, returns 8D numpy arrays
-```
-
-Key design decisions:
-- **Differential learning rates**: BERT backbone (2e-5) vs regression head (1e-3), via `TrainConfig.bert_lr` / `head_lr`
-- **Emotion weighting**: `inverse_mean` mode auto-weights loss by inverse of per-emotion mean intensity
-- **Go/No-Go gates**: Tiered thresholds — stricter for 6 major emotions, relaxed for anger/trust (`EvalConfig`)
-- **Output range**: Sigmoid → [0, 1]; raw WRIME labels (0–3) normalized by `LABEL_SCALE_MAX = 3.0`
-
-### Phase 1 Data Flow
+### Phase 0: Classifier Data Flow
 
 ```
-TextSelector.select() — stratified sampling from WRIME splits (texts_per_emotion per group)
-  → GridSampler.sample(text_id) — LHS (128 samples) or Full Grid in 5D control space [-1, +1]^5
+WRIME (shunk031/wrime on HF Hub)
+  → data/wrime.py: filter (max_intensity > 1), normalize (/3.0), 8D→6D変換, stratify split
+  → training/classifier_trainer.py: CrossEntropy + inverse_frequency class weighting
+  → model/classifier.py: BERT [CLS] → Dropout → Linear(768→256) → ReLU → Dropout → Linear(256→6)
+  → forward() → logits, predict_proba() → softmax (6D確率)
+  → artifacts/classifier/checkpoints/best_model.pt
+  → inference/encoder.py: EmotionEncoder → encode() returns numpy (6,)
+```
+
+Differential learning rates: BERT backbone (`bert_lr: 2e-5`) vs classification head (`head_lr: 1e-3`)。
+
+### Phase 1: Audio Gen Data Flow
+
+```
+TextSelector.select() → stratified sampling from WRIME
+  → GridSampler.sample() → LHS (128 samples) or Grid in 5D [-1, +1]^5
   → VoicevoxClient.audio_query() → VoicevoxAdapter.apply(query, control_vec) → synthesis()
-     Adapter maps [-1, +1] → VOICEVOX params: speedScale, pitchScale, intonationScale, volumeScale, pause*
-  → AudioValidator.validate() — file size, duration, RMS amplitude, sample rate
-  → TripletRecord → triplet_dataset.parquet (text_id, text, emotion_*8, ctrl_*5, audio_path, vv_*7)
+  → AudioValidator.validate() → TripletRecord
+  → artifacts/audio_gen/dataset/triplet_dataset.parquet
 ```
 
-Pipeline (`generation/pipeline.py`) supports checkpoint/resume via `generation_progress.json`. Async batch synthesis with `asyncio.Semaphore` concurrency control. Phase 1 requires a running VOICEVOX Engine (default: `http://localhost:50021`).
+Parquet 列規約: `emotion_*`, `ctrl_*`, `vv_*`。列名変更は下流に影響。音声パスは相対保存。Pipeline は `generation_progress.json` で checkpoint/resume 対応。Phase 1 は VOICEVOX Engine 起動が前提（default: `http://localhost:50021`）。
+
+### Bridge Pipeline
+
+`emotionbridge/inference/bridge_pipeline.py`:
+
+```
+EmotionEncoder(6D probs) → DeterministicMixer(5D params) → RuleBasedStyleSelector(style_id) → VOICEVOX → WAV
+```
+
+- **DeterministicMixer** (`model/generator.py`): `tanh(emotion_probs @ teacher_matrix)` — 6×5 教師行列の線形混合。学習パラメータなし
+- **ParameterGenerator** (`model/generator.py`): Linear(6→hidden)→ReLU→Dropout→Linear(hidden→5)→Tanh — NN版の代替
+- **RuleBasedStyleSelector**: `style_mapping.json` に基づき感情→VOICEVOX スタイルをマッピング
+- 信頼度が `fallback_threshold`（default: 0.3）未満の場合、デフォルトスタイル＋ニュートラル制御にフォールバック
+- ファクトリ: `create_pipeline()` (async)
 
 ### Training Artifacts
 
 ```
 artifacts/
-├── phase0/
-│   ├── checkpoints/best_model.pt
-│   ├── reports/{data_report,training_history,evaluation}.json
-│   └── tensorboard/
-├── phase1/
-│   ├── audio/{text_id:04d}/{task_id}.wav
-│   ├── dataset/triplet_dataset.parquet, metadata.json
-│   ├── checkpoints/generation_progress.json
-│   └── reports/generation_report.json
-└── phase3/
-  ├── v01/  # JVNV preprocessing/extraction/normalization
-  ├── v02/  # VOICEVOX extraction/normalization
-  └── v03/  # matching results and reports
+├── classifier/checkpoints/best_model.pt, reports/
+├── audio_gen/audio/, dataset/triplet_dataset.parquet
+├── generator/checkpoints/best_generator.pt
+└── prosody/v01/ (JVNV), v02/ (VOICEVOX), v03/ (matching), style_mapping.json
 ```
 
 ### Accelerate Integration
 
-Training uses HuggingFace Accelerate for mixed precision (`fp16`/`bf16`), gradient accumulation, and distributed training. The trainer wraps model/optimizer/dataloaders with `accelerator.prepare()` and uses `accelerator.gather()` for multi-process metric computation. Checkpoint saving is guarded by `accelerator.is_main_process`.
+HuggingFace Accelerate で mixed precision (`fp16`/`bf16`)、gradient accumulation、分散学習をサポート。`accelerator.prepare()` でラップ、`accelerator.gather()` でマルチプロセスメトリクス集約、checkpoint 保存は `accelerator.is_main_process` ガード。
+
+## Important Invariants
+
+- WRIME ラベルは `LABEL_SCALE_MAX=3.0` で [0,1] に正規化。分類器は argmax でクラスラベルに変換
+- 制御空間は常に 5D `ControlVector` / `[-1, 1]`。TTS 固有値変換は `VoicevoxAdapter` が担当
+- 各フェーズは `save_effective_config()` で実行時設定を成果物へ保存する前提。出力構造を変える変更は慎重に
+- CLI 拡張時は `emotionbridge/cli.py` の parser 定義と command dispatch の両方を更新する
 
 ## Language
 
-The project targets Japanese text processing. BERT model: `tohoku-nlp/bert-base-japanese-whole-word-masking`. Tokenizer requires `fugashi` + `ipadic` (Japanese morphological analysis). Code comments and documentation are in Japanese.
+日本語テキスト処理。BERT: `cl-tohoku/bert-base-japanese-whole-word-masking`。Tokenizer 依存: `fugashi` + `ipadic` + `unidic-lite`。コード中のコメント・ドキュメントは日本語。

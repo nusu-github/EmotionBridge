@@ -85,6 +85,10 @@ class EmotionEncoder:
         return np.vstack(outputs).astype(np.float32)
 
     @property
+    def is_classifier(self) -> bool:
+        return True
+
+    @property
     def label_names(self) -> list[str]:
         return list(self._label_names)
 
