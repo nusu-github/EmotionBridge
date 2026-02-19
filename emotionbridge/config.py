@@ -23,7 +23,7 @@ class DataConfig:
 
 @dataclass(slots=True)
 class ModelConfig:
-    pretrained_model_name: str = "tohoku-nlp/bert-base-japanese-whole-word-masking"
+    pretrained_model_name: str = "sbintuitions/modernbert-ja-70m"
     dropout: float = 0.1
 
 

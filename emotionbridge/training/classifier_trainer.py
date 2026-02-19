@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import json
 import logging
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -9,8 +9,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+from torch.optim import AdamW
+from torch.utils.data import Dataset
 from transformers import (
+    AutoModelForSequenceClassification,
     AutoTokenizer,
     EarlyStoppingCallback,
     Trainer,
@@ -28,7 +30,6 @@ from emotionbridge.data import (
     build_classifier_data_report,
     build_classifier_splits,
 )
-from emotionbridge.model import TextEmotionClassifier
 from emotionbridge.training.classification_metrics import compute_classification_metrics
 
 logger = logging.getLogger(__name__)
@@ -102,12 +103,39 @@ class EmotionTrainer(Trainer):
         self.label_conversion = label_conversion
         self.soft_label_temperature = soft_label_temperature
 
+    @staticmethod
+    def _to_scalar(value: Any) -> float | None:
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            scalar = float(value)
+            if np.isfinite(scalar):
+                return scalar
+        return None
+
+    def _flatten_log_values(self, logs: dict[str, Any]) -> dict[str, float]:
+        flattened: dict[str, float] = {}
+        for key, value in logs.items():
+            scalar = self._to_scalar(value)
+            if scalar is not None:
+                flattened[key] = scalar
+                continue
+
+            if isinstance(value, dict):
+                for sub_key, sub_value in value.items():
+                    sub_scalar = self._to_scalar(sub_value)
+                    if sub_scalar is not None:
+                        flattened[f"{key}_{sub_key}"] = sub_scalar
+
+        return flattened
+
+    def log(self, logs: dict[str, Any], *args: Any, **kwargs: Any) -> None:
+        super().log(self._flatten_log_values(logs), *args, **kwargs)
+
     def compute_loss(
         self,
         model: nn.Module,
         inputs: dict[str, torch.Tensor],
         return_outputs: bool = False,
-        num_items_in_batch: int | None = None,
+        num_items_in_batch: torch.Tensor | int | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, Any]:
         labels = inputs.pop("labels")
         soft_labels = inputs.pop("soft_labels", None)
@@ -123,7 +151,13 @@ class EmotionTrainer(Trainer):
             log_probs = F.log_softmax(logits / safe_temp, dim=-1)
             loss = -(soft_labels * log_probs).sum(dim=-1).mean()
         else:
-            loss_fct = nn.CrossEntropyLoss(weight=self.class_weights)
+            class_weights = self.class_weights
+            if class_weights is not None and (
+                class_weights.device != logits.device or class_weights.dtype != logits.dtype
+            ):
+                class_weights = class_weights.to(device=logits.device, dtype=logits.dtype)
+                self.class_weights = class_weights
+            loss_fct = nn.CrossEntropyLoss(weight=class_weights)
             loss = loss_fct(logits, labels)
 
         return (loss, outputs) if return_outputs else loss
@@ -152,8 +186,7 @@ def _resolve_class_weights(
     summary = {
         "mode": config.train.class_weight_mode,
         "weights": {
-            label: float(value)
-            for label, value in zip(JVNV_EMOTION_LABELS, weights, strict=True)
+            label: float(value) for label, value in zip(JVNV_EMOTION_LABELS, weights, strict=True)
         },
     }
     return tensor, summary
@@ -168,7 +201,7 @@ def _create_compute_metrics():
 
 
 def _load_transfer_weights(
-    model: TextEmotionClassifier,
+    model: nn.Module,
     transfer_from: str,
 ) -> dict[str, Any]:
     path = Path(transfer_from)
@@ -177,8 +210,6 @@ def _load_transfer_weights(
         raise FileNotFoundError(msg)
 
     # Trainer で保存されたディレクトリ形式から重みをロード
-    from transformers import AutoModelForSequenceClassification
-
     temp_model = AutoModelForSequenceClassification.from_pretrained(str(path))
     state_dict = temp_model.state_dict()
 
@@ -196,6 +227,25 @@ def _load_transfer_weights(
         "missing_keys": len(missing),
         "unexpected_keys": len(unexpected),
     }
+
+
+def _split_model_parameters(model: nn.Module) -> tuple[list[nn.Parameter], list[nn.Parameter]]:
+    base_model_prefix = getattr(model, "base_model_prefix", None)
+    if (
+        isinstance(base_model_prefix, str)
+        and base_model_prefix
+        and hasattr(model, base_model_prefix)
+    ):
+        encoder = list(getattr(model, base_model_prefix).parameters())
+        encoder_prefix = f"{base_model_prefix}."
+        head = [
+            parameter
+            for name, parameter in model.named_parameters()
+            if not name.startswith(encoder_prefix)
+        ]
+        return encoder, head
+
+    return [], list(model.parameters())
 
 
 def train_classifier(config: ClassifierConfig) -> dict[str, Any] | None:
@@ -225,15 +275,15 @@ def train_classifier(config: ClassifierConfig) -> dict[str, Any] | None:
         splits["test"].soft_targets,
     )
 
-    id2label = {i: label for i, label in enumerate(JVNV_EMOTION_LABELS)}
+    id2label = dict(enumerate(JVNV_EMOTION_LABELS))
     label2id = {label: i for i, label in enumerate(JVNV_EMOTION_LABELS)}
 
-    model = TextEmotionClassifier(
-        pretrained_model_name=config.model.pretrained_model_name,
-        num_classes=NUM_JVNV_EMOTIONS,
-        dropout=config.model.dropout,
+    model = AutoModelForSequenceClassification.from_pretrained(
+        config.model.pretrained_model_name,
+        num_labels=NUM_JVNV_EMOTIONS,
         id2label=id2label,
         label2id=label2id,
+        classifier_dropout=config.model.dropout,
     )
 
     transfer_summary: dict[str, Any] | None = None
@@ -248,7 +298,7 @@ def train_classifier(config: ClassifierConfig) -> dict[str, Any] | None:
 
     training_args = TrainingArguments(
         output_dir=str(output_dir / "checkpoints"),
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         save_strategy="epoch",
         logging_steps=config.train.log_every_steps,
         learning_rate=config.train.head_lr,  # デフォルト。後で最適化グループを調整可能
@@ -265,22 +315,30 @@ def train_classifier(config: ClassifierConfig) -> dict[str, Any] | None:
         dataloader_num_workers=config.train.num_workers,
         dataloader_pin_memory=config.train.pin_memory,
         gradient_accumulation_steps=config.train.gradient_accumulation_steps,
-        report_to=["tensorboard"],
+        remove_unused_columns=False,
     )
 
     # 異なる学習率の設定
-    optimizer_grouped_parameters = [
-        {
-            "params": model.get_encoder_parameters(),
-            "lr": config.train.bert_lr,
-        },
-        {
-            "params": model.get_head_parameters(),
-            "lr": config.train.head_lr,
-        },
-    ]
-    from torch.optim import AdamW
+    encoder_params, head_params = _split_model_parameters(model)
+    optimizer_grouped_parameters: list[dict[str, Any]] = []
+    if encoder_params:
+        optimizer_grouped_parameters.append(
+            {
+                "params": encoder_params,
+                "lr": config.train.bert_lr,
+            },
+        )
+    if head_params:
+        optimizer_grouped_parameters.append(
+            {
+                "params": head_params,
+                "lr": config.train.head_lr,
+            },
+        )
 
+    if not optimizer_grouped_parameters:
+        msg = "No trainable parameters were found for optimizer setup"
+        raise ValueError(msg)
     optimizer = AdamW(optimizer_grouped_parameters, weight_decay=config.train.weight_decay)
 
     trainer = EmotionTrainer(
@@ -313,12 +371,10 @@ def train_classifier(config: ClassifierConfig) -> dict[str, Any] | None:
     trainer.save_model(str(output_dir / "checkpoints" / "best_model"))
 
     # メタデータ保存
-    if trainer.is_main_process:
+    if trainer.is_world_process_zero():
         save_effective_config(config, output_dir / "effective_config.yaml")
-        data_report = build_classifier_data_report(splits, metadata)
+        build_classifier_data_report(splits, metadata)
         with (reports_dir / "evaluation.json").open("w", encoding="utf-8") as f:
-            import json
-
             json.dump(
                 {
                     "metrics": test_metrics,
@@ -349,9 +405,7 @@ def _go_no_go_classifier(metrics: dict[str, Any], config: ClassifierConfig) -> d
     }
     per_class = metrics.get("test_per_class_f1", metrics.get("eval_per_class_f1", {}))
     for emotion in key_emotions:
-        checks[f"{emotion}_f1"] = (
-            per_class.get(emotion, 0.0) >= config.eval.go_key_emotion_f1_min
-        )
+        checks[f"{emotion}_f1"] = per_class.get(emotion, 0.0) >= config.eval.go_key_emotion_f1_min
 
     return {
         **checks,

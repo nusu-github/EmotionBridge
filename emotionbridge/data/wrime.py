@@ -69,7 +69,6 @@ def _load_all_records(
     dataset: DatasetDict = load_dataset(
         data_config.dataset_name,
         name=data_config.dataset_config_name,
-        trust_remote_code=True,
     )
 
     split_sizes = {

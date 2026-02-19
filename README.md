@@ -215,7 +215,7 @@ emotionbridge/
 ├── config.py               # Classifier/AudioGen 設定
 ├── constants.py            # 感情ラベル・制御パラメータ定数
 ├── data/                   # WRIME データ処理
-├── model/                  # TextEmotionClassifier, DeterministicMixer, ParameterGenerator
+├── model/                  # DeterministicMixer, ParameterGenerator
 ├── training/               # Phase 0 訓練, generator_trainer
 ├── inference/              # EmotionEncoder, bridge_pipeline
 ├── generation/             # Phase 1 生成パイプライン
