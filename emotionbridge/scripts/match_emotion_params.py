@@ -6,11 +6,9 @@ cross_domain_alignment 有効時は aligned 特徴量を、
 distance_metric=weighted_euclidean 時は偏相関ベースの特徴量重みを使用する。
 """
 
-from __future__ import annotations
-
 import argparse
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -23,9 +21,8 @@ from emotionbridge.scripts.common import (
     save_markdown,
     write_parquet,
 )
+from pathlib import Path
 
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 import argparse
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pandas as pd
 
@@ -13,9 +11,7 @@ from emotionbridge.scripts.common import (
     save_json,
     write_parquet,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from pathlib import Path
 
 
 def _build_parser() -> argparse.ArgumentParser:

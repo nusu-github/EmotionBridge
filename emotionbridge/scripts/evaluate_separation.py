@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import logging
 import operator
@@ -25,11 +23,11 @@ from emotionbridge.scripts.visualize import (
     plot_tier_boxplots,
     plot_tsne_scatter,
 )
+import pandas as pd
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pandas as pd
 
 logger = logging.getLogger(__name__)
 

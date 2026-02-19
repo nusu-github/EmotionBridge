@@ -1,8 +1,5 @@
-from __future__ import annotations
-
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import torch
 from torch import nn
@@ -13,9 +10,7 @@ from emotionbridge.constants import (
     NUM_CONTROL_PARAMS,
     NUM_JVNV_EMOTIONS,
 )
-
-if TYPE_CHECKING:
-    import numpy as np
+import numpy as np
 
 
 class ParameterGenerator(nn.Module):

@@ -1,10 +1,8 @@
-from __future__ import annotations
-
 import argparse
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 from sklearn.decomposition import PCA
@@ -20,9 +18,8 @@ from emotionbridge.scripts.common import (
     read_parquet,
     resolve_path,
 )
+import pandas as pd
 
-if TYPE_CHECKING:
-    import pandas as pd
 
 logger = logging.getLogger(__name__)
 

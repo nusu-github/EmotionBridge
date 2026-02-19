@@ -4,11 +4,9 @@ JVNV（実音声）と VOICEVOX（合成音声）の per-speaker 正規化済み
 pooled z-score で再正規化し、ドメイン間の距離比較を有意にする。
 """
 
-from __future__ import annotations
-
 import argparse
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 
@@ -19,9 +17,8 @@ from emotionbridge.scripts.common import (
     save_json,
     write_parquet,
 )
+import pandas as pd
 
-if TYPE_CHECKING:
-    import pandas as pd
 
 logger = logging.getLogger(__name__)
 

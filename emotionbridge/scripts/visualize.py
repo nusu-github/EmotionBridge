@@ -1,16 +1,11 @@
-from __future__ import annotations
-
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-
-if TYPE_CHECKING:
-    import pandas as pd
+import pandas as pd
 
 
 def _ensure_output_path(output_path: str | Path) -> Path:

@@ -63,6 +63,10 @@ uv run python main.py bridge \
 
 正式なテストスイートはない。Smoke config（`classifier_smoke.yaml`, `audio_gen_smoke.yaml`, `experiment_smoke.yaml`）と CLI 手動実行でテストする。
 
+## Tooling
+
+Ruff: `line-length = 100`。`E501` は無視。`RUF001`/`RUF002`/`RUF003`（全角文字系）も無視（日本語テキスト処理のため）。`ty check` は明示的な設定なしでデフォルト動作。
+
 ## Architecture
 
 ### Two-space Design
@@ -88,21 +92,25 @@ Go/No-Go 評価で重視: `KEY_EMOTION_LABELS = ["anger", "happy", "sad"]`
 - `num_classes` / `label_conversion` / `class_weight_mode` キー → `ClassifierConfig`
 - いずれもなし → `ValueError`
 
-Phase 3 スクリプトは `emotionbridge/scripts/common.py::load_experiment_config` で独自に設定を読む。
+Phase 3 スクリプトは `emotionbridge/scripts/common.py::load_experiment_config` で独自に設定を読む（`ExperimentConfig` → `PathsConfig`, `V01Config`, `V02Config`, `V03Config` 等のネスト構造）。
 
 ### Phase 0: Classifier Data Flow
 
 ```
 WRIME (shunk031/wrime on HF Hub)
   → data/wrime.py: filter (max_intensity > 1), normalize (/3.0), 8D→6D変換, stratify split
-  → training/classifier_trainer.py: CrossEntropy + inverse_frequency class weighting
-  → model/classifier.py: BERT [CLS] → Dropout → Linear(768→256) → ReLU → Dropout → Linear(256→6)
-  → forward() → logits, predict_proba() → softmax (6D確率)
-  → artifacts/classifier/checkpoints/best_model
+  → training/classifier_trainer.py:
+      EmotionTrainer (HF Trainer 拡張) + ClassifierBatchCollator
+      CrossEntropy + inverse_frequency class weighting
+      label_conversion: "argmax"(default) or "soft_label"(KL divergence + temperature scaling)
+  → AutoModelForSequenceClassification (HF 標準モデル)
+  → artifacts/classifier/checkpoints/best_model (HF 標準形式で保存)
   → inference/encoder.py: EmotionEncoder → encode() returns numpy (6,)
 ```
 
-Differential learning rates: BERT backbone (`bert_lr: 2e-5`) vs classification head (`head_lr: 1e-3`)。
+分類器はカスタムモデルクラスではなく `AutoModelForSequenceClassification` を直接使用。`model/classifier.py` は廃止済み。`model/` には `DeterministicMixer` と `ParameterGenerator` のみ残る。
+
+Differential learning rates: `_split_model_parameters()` で BERT backbone (`bert_lr: 2e-5`) と classification head (`head_lr: 1e-3`) を分離。
 
 ### Phase 1: Audio Gen Data Flow
 
@@ -127,8 +135,13 @@ EmotionEncoder(6D probs) → DeterministicMixer(5D params) → RuleBasedStyleSel
 - **DeterministicMixer** (`model/generator.py`): `tanh(emotion_probs @ teacher_matrix)` — 6×5 教師行列の線形混合。学習パラメータなし
 - **ParameterGenerator** (`model/generator.py`): Linear(6→hidden)→ReLU→Dropout→Linear(hidden→5)→Tanh — NN版の代替
 - **RuleBasedStyleSelector**: `style_mapping.json` に基づき感情→VOICEVOX スタイルをマッピング
-- 信頼度が `fallback_threshold`（default: 0.3）未満の場合、デフォルトスタイル＋ニュートラル制御にフォールバック
+- チェックポイントの `model_type` フィールドで DeterministicMixer / ParameterGenerator を自動判別
+- 信頼度が `fallback_threshold`（default: 0.3）未満 → デフォルトスタイル＋ゼロ ControlVector にフォールバック
 - ファクトリ: `create_pipeline()` (async)
+
+### TTS Layer
+
+`emotionbridge/tts/`: `VoicevoxClient`（async HTTP）、`VoicevoxAdapter`、`ControlVector`、`AudioQuery` 等。`VoicevoxAdapter.apply()` は immutable — 新しい `AudioQuery` を返し、元を変更しない。抽象基底 `TTSAdapter` を実装しており、別 TTS エンジンへの差し替えポイント。
 
 ### Training Artifacts
 
@@ -150,6 +163,7 @@ HuggingFace Accelerate で mixed precision (`fp16`/`bf16`)、gradient accumulati
 - 制御空間は常に 5D `ControlVector` / `[-1, 1]`。TTS 固有値変換は `VoicevoxAdapter` が担当
 - 各フェーズは `save_effective_config()` で実行時設定を成果物へ保存する前提。出力構造を変える変更は慎重に
 - CLI 拡張時は `emotionbridge/cli.py` の parser 定義と command dispatch の両方を更新する
+- 分類器チェックポイントは HF 標準形式（`config.json`, `model.safetensors` 等）。`AutoModelForSequenceClassification.from_pretrained()` でロード
 
 ## Language
 

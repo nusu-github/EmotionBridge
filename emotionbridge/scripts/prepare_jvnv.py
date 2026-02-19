@@ -1,10 +1,7 @@
-from __future__ import annotations
-
 import argparse
 import logging
 import operator
 import re
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -16,9 +13,8 @@ from emotionbridge.scripts.common import (
     save_json,
     write_parquet,
 )
+from pathlib import Path
 
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
