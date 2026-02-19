@@ -150,14 +150,8 @@ def _partial_correlations(
 
     for control_index, control in enumerate(control_cols):
         target_control = control_values[:, control_index]
-        other_indices = [
-            index for index in range(len(control_cols)) if index != control_index
-        ]
-        covariates = (
-            control_values[:, other_indices]
-            if other_indices
-            else np.empty((len(df), 0))
-        )
+        other_indices = [index for index in range(len(control_cols)) if index != control_index]
+        covariates = control_values[:, other_indices] if other_indices else np.empty((len(df), 0))
         control_residual = _residualize(target_control, covariates)
 
         for feature in feature_cols:
@@ -370,9 +364,7 @@ def run_evaluation(
     v02_dir.mkdir(parents=True, exist_ok=True)
 
     source_path = (
-        resolve_path(input_path)
-        if input_path
-        else v02_dir / "voicevox_egemaps_normalized.parquet"
+        resolve_path(input_path) if input_path else v02_dir / "voicevox_egemaps_normalized.parquet"
     )
     if not source_path.exists():
         msg = f"Input not found: {source_path}"
@@ -406,21 +398,14 @@ def run_evaluation(
         control_cols=control_cols,
     )
     av_gate_pass = bool(av_alignment and av_alignment["direction_gate_pass"])
-    if gate_policy == "feature_and_av":
-        gate_pass = (
-            feature_gate_pass and av_gate_pass
-            if av_alignment is not None
-            else feature_gate_pass
-        )
-    else:
-        gate_pass = feature_gate_pass
+    gate_pass = (
+        (feature_gate_pass and av_gate_pass if av_alignment is not None else feature_gate_pass)
+        if gate_policy == "feature_and_av"
+        else feature_gate_pass
+    )
 
     top_features = (
-        pearson_matrix.abs()
-        .max(axis=0)
-        .sort_values(ascending=False)
-        .head(25)
-        .index.tolist()
+        pearson_matrix.abs().max(axis=0).sort_values(ascending=False).head(25).index.tolist()
     )
     heatmap_matrix = pearson_matrix[top_features]
     plots_dir = v02_dir / "plots"
@@ -524,9 +509,7 @@ def run_evaluation(
     for control in control_cols:
         payload = axis_responsiveness[control]
         report_lines.append(
-            "| "
-            f"{control} | {payload['top_feature']} | {payload['top_abs_partial_corr']:.4f} | "
-            f"{payload['responsive']} |",
+            f"| {control} | {payload['top_feature']} | {payload['top_abs_partial_corr']:.4f} | {payload['responsive']} |",
         )
 
     if av_alignment is not None:
@@ -541,9 +524,7 @@ def run_evaluation(
         for control in av_alignment["required_direction_controls"]:
             check = av_alignment["direction_checks"][control]
             report_lines.append(
-                "| "
-                f"{control} | {check['axis']} | {check['expected_sign']} | "
-                f"{check['threshold']:.2f} | {check['score']:.4f} | {check['pass']} |",
+                f"| {control} | {check['axis']} | {check['expected_sign']} | {check['threshold']:.2f} | {check['score']:.4f} | {check['pass']} |",
             )
 
     save_markdown("\n".join(report_lines), v02_dir / "v02_responsiveness_report.md")

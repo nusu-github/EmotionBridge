@@ -43,9 +43,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def _collect_nv_label_files(nv_label_dir: Path) -> dict[str, Path]:
     if not nv_label_dir.exists():
         return {}
-    return {
-        path.stem: path for path in sorted(nv_label_dir.rglob("*")) if path.is_file()
-    }
+    return {path.stem: path for path in sorted(nv_label_dir.rglob("*")) if path.is_file()}
 
 
 def _parse_nv_intervals(

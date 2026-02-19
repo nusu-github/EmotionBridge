@@ -46,7 +46,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--classifier-checkpoint",
-        default="artifacts/classifier/checkpoints/best_model.pt",
+        default="artifacts/classifier/checkpoints/best_model",
         help="分類器チェックポイント",
     )
     parser.add_argument(
@@ -153,10 +153,7 @@ def _pick_text_samples(
         subset = dedup[dedup["emotion_common6"] == emotion]
         rows = subset.to_dict(orient="records")
         if len(rows) < samples_per_emotion:
-            msg = (
-                f"Not enough text samples for emotion={emotion}: "
-                f"required={samples_per_emotion}, available={len(rows)}"
-            )
+            msg = f"Not enough text samples for emotion={emotion}: required={samples_per_emotion}, available={len(rows)}"
             raise RuntimeError(msg)
 
         rng.shuffle(rows)

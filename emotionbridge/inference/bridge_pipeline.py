@@ -116,13 +116,9 @@ class EmotionBridgePipeline:
 
     def _classifier_probs_common6(self, text: str) -> np.ndarray:
         probs = self._classifier.encode(text)
-        label_to_index = {
-            label: idx for idx, label in enumerate(self._classifier.label_names)
-        }
+        label_to_index = {label: idx for idx, label in enumerate(self._classifier.label_names)}
 
-        missing = [
-            label for label in JVNV_EMOTION_LABELS if label not in label_to_index
-        ]
+        missing = [label for label in JVNV_EMOTION_LABELS if label not in label_to_index]
         if missing:
             msg = f"Classifier labels do not cover JVNV common6: missing={missing}"
             raise ValueError(msg)
@@ -241,9 +237,7 @@ def _load_generator_checkpoint(
         model.load_state_dict(model_state_dict, strict=True)
     else:
         model_config = (
-            checkpoint.get("config", {}).get("model", {})
-            if isinstance(checkpoint, dict)
-            else {}
+            checkpoint.get("config", {}).get("model", {}) if isinstance(checkpoint, dict) else {}
         )
         hidden_dim = int(model_config.get("hidden_dim", 64))
         dropout = float(model_config.get("dropout", 0.3))
@@ -255,8 +249,7 @@ def _load_generator_checkpoint(
         compatible_state_dict = {
             key: value
             for key, value in model_state_dict.items()
-            if key in current_state_dict
-            and current_state_dict[key].shape == value.shape
+            if key in current_state_dict and current_state_dict[key].shape == value.shape
         }
         model.load_state_dict(compatible_state_dict, strict=False)
 

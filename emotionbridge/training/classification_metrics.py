@@ -18,17 +18,11 @@ def compute_classification_metrics(
         raise ValueError(msg)
 
     if logits.shape[0] != true_labels.shape[0]:
-        msg = (
-            "logits and true_labels row count mismatch: "
-            f"{logits.shape[0]} != {true_labels.shape[0]}"
-        )
+        msg = f"logits and true_labels row count mismatch: {logits.shape[0]} != {true_labels.shape[0]}"
         raise ValueError(msg)
 
     if logits.shape[1] != len(label_names):
-        msg = (
-            "number of classes in logits must match label_names: "
-            f"{logits.shape[1]} != {len(label_names)}"
-        )
+        msg = f"number of classes in logits must match label_names: {logits.shape[1]} != {len(label_names)}"
         raise ValueError(msg)
 
     pred_labels = np.argmax(logits, axis=1).astype(np.int64)
@@ -71,12 +65,10 @@ def compute_classification_metrics(
             name: float(value) for name, value in zip(label_names, per_f1, strict=True)
         },
         "per_class_precision": {
-            name: float(value)
-            for name, value in zip(label_names, per_precision, strict=True)
+            name: float(value) for name, value in zip(label_names, per_precision, strict=True)
         },
         "per_class_recall": {
-            name: float(value)
-            for name, value in zip(label_names, per_recall, strict=True)
+            name: float(value) for name, value in zip(label_names, per_recall, strict=True)
         },
         "confusion_matrix": confusion_matrix(
             true_labels,

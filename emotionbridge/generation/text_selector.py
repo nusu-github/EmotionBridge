@@ -100,9 +100,7 @@ class TextSelector:
         )
 
         # dominant emotion でグループ化
-        emotion_groups: dict[str, list[dict[str, Any]]] = {
-            label: [] for label in EMOTION_LABELS
-        }
+        emotion_groups: dict[str, list[dict[str, Any]]] = {label: [] for label in EMOTION_LABELS}
         for cand in candidates:
             emotion = str(cand["dominant_emotion"])
             emotion_groups[emotion].append(cand)
@@ -201,9 +199,7 @@ class TextSelector:
 
         # 不足分を全体から補充
         if len(sampled_indices) < n_select:
-            remaining_indices = [
-                i for i in range(len(group)) if i not in set(sampled_indices)
-            ]
+            remaining_indices = [i for i in range(len(group)) if i not in set(sampled_indices)]
             shortfall = n_select - len(sampled_indices)
             if remaining_indices:
                 extra = rng.choice(

@@ -20,9 +20,7 @@ from emotionbridge.model import DeterministicMixer, ParameterGenerator
 
 @dataclass(slots=True)
 class GeneratorDataConfig:
-    teacher_table_path: str = (
-        "artifacts/generator/teacher_table/recommended_params.json"
-    )
+    teacher_table_path: str = "artifacts/generator/teacher_table/recommended_params.json"
     strategy: str = "lookup_table_dirichlet"
     samples_per_emotion: int = 300
     dirichlet_alpha_dominant: float = 10.0
@@ -226,10 +224,11 @@ def _run_eval(
             targets_all.append(targets.detach().cpu().numpy())
 
     val_loss = float(np.mean(losses)) if losses else 0.0
-    if not preds_all:
-        mae_per_axis = [0.0 for _ in CONTROL_PARAM_NAMES]
-    else:
-        mae_per_axis = _mae_by_axis(np.vstack(preds_all), np.vstack(targets_all))
+    mae_per_axis = (
+        [0.0 for _ in CONTROL_PARAM_NAMES]
+        if not preds_all
+        else _mae_by_axis(np.vstack(preds_all), np.vstack(targets_all))
+    )
 
     return val_loss, mae_per_axis
 
@@ -355,15 +354,13 @@ def train_generator(config: GeneratorConfig) -> dict[str, Any]:
         random_seed=config.data.random_seed,
     )
 
-    train_probs, val_probs, train_targets, val_targets, _train_dom, _val_dom = (
-        train_test_split(
-            probs_np,
-            targets_np,
-            dominant,
-            test_size=config.data.val_ratio,
-            random_state=config.data.random_seed,
-            stratify=dominant,
-        )
+    train_probs, val_probs, train_targets, val_targets, _train_dom, _val_dom = train_test_split(
+        probs_np,
+        targets_np,
+        dominant,
+        test_size=config.data.val_ratio,
+        random_state=config.data.random_seed,
+        stratify=dominant,
     )
 
     train_ds = TensorDataset(

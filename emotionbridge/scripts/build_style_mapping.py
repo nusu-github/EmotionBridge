@@ -170,12 +170,10 @@ def _build_style_profiles(
             "style_name": _style_meta(style_id)["style_name"],
             "num_samples": len(subset),
             "centroid": {
-                feature: float(value)
-                for feature, value in zip(feature_cols, centroid, strict=True)
+                feature: float(value) for feature, value in zip(feature_cols, centroid, strict=True)
             },
             "std": {
-                feature: float(value)
-                for feature, value in zip(feature_cols, std, strict=True)
+                feature: float(value) for feature, value in zip(feature_cols, std, strict=True)
             },
         }
 
@@ -209,9 +207,7 @@ def run_build_style_mapping(
 
     v01_dir = resolve_path(config.v01.output_dir)
     v02_dir = resolve_path(config.v02.output_dir)
-    v03_dir = (
-        resolve_path(output_dir) if output_dir else resolve_path(config.v03.output_dir)
-    )
+    v03_dir = resolve_path(output_dir) if output_dir else resolve_path(config.v03.output_dir)
     output_root = resolve_path(config.paths.output_root)
 
     v03_dir.mkdir(parents=True, exist_ok=True)
@@ -229,10 +225,7 @@ def run_build_style_mapping(
     )
 
     if not jvnv_path.exists() or not voicevox_path.exists():
-        msg = (
-            "Input file missing: "
-            f"jvnv={jvnv_path.exists()}, voicevox={voicevox_path.exists()}"
-        )
+        msg = f"Input file missing: jvnv={jvnv_path.exists()}, voicevox={voicevox_path.exists()}"
         raise FileNotFoundError(msg)
 
     jvnv_df = read_parquet(jvnv_path).copy()
@@ -250,9 +243,7 @@ def run_build_style_mapping(
             int(style_id) for style_id in voicevox_df["style_id"].unique().tolist()
         )
 
-    voicevox_df = voicevox_df[
-        voicevox_df["style_id"].isin(target_style_ids)
-    ].reset_index(drop=True)
+    voicevox_df = voicevox_df[voicevox_df["style_id"].isin(target_style_ids)].reset_index(drop=True)
     if voicevox_df.empty:
         msg = f"No rows remain after style_id filter: {target_style_ids}"
         raise RuntimeError(msg)
@@ -296,9 +287,9 @@ def run_build_style_mapping(
 
                 if valid_cols:
                     normalized_raw_df = raw_df[["style_id"]].copy()
-                    normalized_raw_df[valid_cols] = (
-                        raw_df[valid_cols] - means[valid_cols]
-                    ) / stds[valid_cols]
+                    normalized_raw_df[valid_cols] = (raw_df[valid_cols] - means[valid_cols]) / stds[
+                        valid_cols
+                    ]
 
                     feature_cols = valid_cols
                     style_profiles, style_centroids = _build_style_profiles(
@@ -325,9 +316,7 @@ def run_build_style_mapping(
         subset = jvnv_df[jvnv_df["emotion_common6"] == emotion]
         if subset.empty:
             continue
-        jvnv_centroids[emotion] = (
-            subset[feature_cols].to_numpy(dtype=np.float64).mean(axis=0)
-        )
+        jvnv_centroids[emotion] = subset[feature_cols].to_numpy(dtype=np.float64).mean(axis=0)
 
     # emotion x style distance matrix
     distance_records: list[dict[str, Any]] = []
@@ -376,9 +365,7 @@ def run_build_style_mapping(
         "profile_source": profile_source,
         "max_pairwise_centroid_distance": max_pairwise_distance,
         "feature_count": len(feature_cols),
-        "styles": {
-            str(style_id): profile for style_id, profile in style_profiles.items()
-        },
+        "styles": {str(style_id): profile for style_id, profile in style_profiles.items()},
     }
     styles_json = v03_dir / "style_profiles.json"
     save_json(styles_payload, styles_json)

@@ -23,8 +23,7 @@ class DataConfig:
 
 @dataclass(slots=True)
 class ModelConfig:
-    pretrained_model_name: str = "cl-tohoku/bert-base-japanese-whole-word-masking"
-    bottleneck_dim: int = 256
+    pretrained_model_name: str = "tohoku-nlp/bert-base-japanese-whole-word-masking"
     dropout: float = 0.1
 
 
@@ -107,16 +106,17 @@ class VoicevoxConfig:
 class ControlSpaceConfig:
     """制御空間のマッピング範囲設定。
 
-    デフォルト値はProposal Section 3.2に基づく保守的な範囲。
+    デフォルト値はVOICEVOX推奨範囲に基づく。
+    pitch_shift_rangeのみVOICEVOX仕様上限が±0.15のため狭い。
     """
 
-    speed_range: tuple[float, float] = (0.5, 1.5)
+    speed_range: tuple[float, float] = (0.5, 2.0)
     pitch_shift_range: tuple[float, float] = (-0.15, 0.15)
-    pitch_range_range: tuple[float, float] = (0.5, 1.5)
-    energy_range: tuple[float, float] = (0.5, 1.5)
-    pause_pre_range: tuple[float, float] = (0.0, 0.2)
-    pause_post_range: tuple[float, float] = (0.0, 0.2)
-    pause_length_scale_range: tuple[float, float] = (0.5, 1.5)
+    pitch_range_range: tuple[float, float] = (0.0, 2.0)
+    energy_range: tuple[float, float] = (0.0, 2.0)
+    pause_pre_range: tuple[float, float] = (0.0, 1.0)
+    pause_post_range: tuple[float, float] = (0.0, 1.0)
+    pause_length_scale_range: tuple[float, float] = (0.0, 2.0)
 
 
 @dataclass(slots=True)
@@ -166,7 +166,7 @@ class GenerationConfig:
 class AudioGenConfig:
     """音声サンプル生成パイプラインの設定。"""
 
-    classifier_checkpoint: str = "artifacts/classifier/checkpoints/best_model.pt"
+    classifier_checkpoint: str = "artifacts/classifier/checkpoints/best_model"
     device: str = "cuda"
     voicevox: VoicevoxConfig = field(default_factory=VoicevoxConfig)
     control_space: ControlSpaceConfig = field(default_factory=ControlSpaceConfig)
@@ -216,7 +216,7 @@ def load_config(
         return AudioGenConfig(
             classifier_checkpoint=raw.get(
                 "classifier_checkpoint",
-                "artifacts/classifier/checkpoints/best_model.pt",
+                "artifacts/classifier/checkpoints/best_model",
             ),
             device=raw.get("device", "cuda"),
             voicevox=_build_section(VoicevoxConfig, raw.get("voicevox")),
@@ -246,10 +246,7 @@ def load_config(
             eval=_build_section(ClassifierEvalConfig, raw.get("eval")),
         )
 
-    msg = (
-        "Unknown config format. Expected AudioGenConfig (voicevox key) "
-        "or ClassifierConfig (num_classes/label_conversion/class_weight_mode key)."
-    )
+    msg = "Unknown config format. Expected AudioGenConfig (voicevox key) or ClassifierConfig (num_classes/label_conversion/class_weight_mode key)."
     raise ValueError(msg)
 
 

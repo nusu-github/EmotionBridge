@@ -1,51 +1,47 @@
-from collections.abc import Iterable
+from __future__ import annotations
 
 import torch
 from torch import nn
-from transformers import AutoModel
+from transformers import AutoModelForSequenceClassification
 
 from emotionbridge.constants import NUM_JVNV_EMOTIONS
 
 
 class TextEmotionClassifier(nn.Module):
+    """AutoModelForSequenceClassification を使用したテキスト感情分類器。"""
+
     def __init__(
         self,
         pretrained_model_name: str,
         num_classes: int = NUM_JVNV_EMOTIONS,
-        bottleneck_dim: int = 256,
-        dropout: float = 0.1,
+        dropout: float | None = None,
+        id2label: dict[int, str] | None = None,
+        label2id: dict[str, int] | None = None,
     ) -> None:
         super().__init__()
-        self.encoder = AutoModel.from_pretrained(pretrained_model_name)
-        hidden_size = int(self.encoder.config.hidden_size)
-
-        self.dropout1 = nn.Dropout(dropout)
-        self.fc1 = nn.Linear(hidden_size, bottleneck_dim)
-        self.relu = nn.ReLU()
-        self.dropout2 = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(bottleneck_dim, num_classes)
+        # AutoModelForSequenceClassification を利用して標準的な分類ヘッドを構築
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            pretrained_model_name,
+            num_labels=num_classes,
+            id2label=id2label,
+            label2id=label2id,
+        )
+        if dropout is not None and hasattr(self.model.config, "hidden_dropout_prob"):
+            self.model.config.hidden_dropout_prob = dropout
 
     def forward(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
         token_type_ids: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        if token_type_ids is None:
-            outputs = self.encoder(input_ids=input_ids, attention_mask=attention_mask)
-        else:
-            outputs = self.encoder(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                token_type_ids=token_type_ids,
-            )
-
-        cls_embedding = outputs.last_hidden_state[:, 0, :]
-        x = self.dropout1(cls_embedding)
-        x = self.fc1(x)
-        x = self.relu(x)
-        x = self.dropout2(x)
-        return self.fc2(x)
+        labels: torch.Tensor | None = None,
+    ):
+        return self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            labels=labels,
+        )
 
     def predict_proba(
         self,
@@ -53,20 +49,24 @@ class TextEmotionClassifier(nn.Module):
         attention_mask: torch.Tensor,
         token_type_ids: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        logits = self.forward(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-        )
-        return torch.softmax(logits, dim=-1)
+        outputs = self.forward(input_ids, attention_mask, token_type_ids)
+        return torch.softmax(outputs.logits, dim=-1)
 
-    def head_parameters(self) -> Iterable[torch.nn.Parameter]:
-        modules = [
-            self.dropout1,
-            self.fc1,
-            self.relu,
-            self.dropout2,
-            self.fc2,
-        ]
-        for module in modules:
-            yield from module.parameters()
+    def get_encoder_parameters(self):
+        """バックボーン（BERT等）のパラメータを返す。"""
+        # AutoModelForSequenceClassification の構造に依存するが、
+        # 通常ベースモデルは最初の属性（bert, roberta等）として保持される
+        base_model_name = self.model.base_model_prefix
+        if hasattr(self.model, base_model_name):
+            return getattr(self.model, base_model_name).parameters()
+        return self.model.parameters()
+
+    def get_head_parameters(self):
+        """分類ヘッドのパラメータを返す。"""
+        if hasattr(self.model, "classifier"):
+            return self.model.classifier.parameters()
+        # その他、モデルアーキテクチャに応じた分類層の名称
+        for name in ["score", "fc"]:
+            if hasattr(self.model, name):
+                return getattr(self.model, name).parameters()
+        return []

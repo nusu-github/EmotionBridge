@@ -68,8 +68,7 @@ class AudioValidator:
         file_size = audio_path.stat().st_size
         if file_size < self._config.min_file_size_bytes:
             errors.append(
-                f"ファイルサイズ不足: {file_size} bytes "
-                f"(最小: {self._config.min_file_size_bytes} bytes)",
+                f"ファイルサイズ不足: {file_size} bytes (最小: {self._config.min_file_size_bytes} bytes)",
             )
 
         # WAVヘッダ読み込み
@@ -94,23 +93,20 @@ class AudioValidator:
         duration = n_frames / sample_rate if sample_rate > 0 else 0.0
         if duration < self._config.min_duration_seconds:
             errors.append(
-                f"音声長不足: {duration:.3f}秒 "
-                f"(最小: {self._config.min_duration_seconds}秒)",
+                f"音声長不足: {duration:.3f}秒 (最小: {self._config.min_duration_seconds}秒)",
             )
 
         # サンプルレートチェック
         if sample_rate != self._config.expected_sample_rate:
             errors.append(
-                f"サンプルレート不一致: {sample_rate} Hz "
-                f"(期待値: {self._config.expected_sample_rate} Hz)",
+                f"サンプルレート不一致: {sample_rate} Hz (期待値: {self._config.expected_sample_rate} Hz)",
             )
 
         # RMS振幅計算
         rms = self._compute_rms(raw_data, sample_width, n_channels)
         if rms < self._config.min_rms_amplitude:
             errors.append(
-                f"RMS振幅不足（無音検出）: {rms:.6f} "
-                f"(最小: {self._config.min_rms_amplitude})",
+                f"RMS振幅不足（無音検出）: {rms:.6f} (最小: {self._config.min_rms_amplitude})",
             )
 
         is_valid = len(errors) == 0
@@ -179,10 +175,9 @@ class AudioValidator:
         samples = np.frombuffer(raw_data, dtype=dtype)
 
         # uint8の場合は中央値を0に補正
-        if sample_width == 1:
-            samples = samples.astype(np.float64) - 128.0
-        else:
-            samples = samples.astype(np.float64)
+        samples = (
+            samples.astype(np.float64) - 128.0 if sample_width == 1 else samples.astype(np.float64)
+        )
 
         # ステレオの場合はモノラルに変換（左チャンネルのみ使用）
         if n_channels > 1:

@@ -61,7 +61,7 @@ def _build_parser() -> argparse.ArgumentParser:
     encode_parser.add_argument(
         "--checkpoint",
         required=True,
-        help="Path to checkpoint (.pt)",
+        help="Path to checkpoint directory",
     )
     encode_parser.add_argument("--text", required=True, help="Input text")
     encode_parser.add_argument("--device", default="cuda", help="cuda or cpu")
@@ -105,8 +105,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     bridge_parser.add_argument(
         "--classifier-checkpoint",
-        default="artifacts/classifier/checkpoints/best_model.pt",
-        help="Path to classifier checkpoint",
+        default="artifacts/classifier/checkpoints/best_model",
+        help="Path to classifier checkpoint directory",
     )
     bridge_parser.add_argument(
         "--generator-checkpoint",
@@ -137,10 +137,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def _cmd_train(config_path: str) -> None:
     config = load_config(config_path)
     if not isinstance(config, ClassifierConfig):
-        msg = (
-            f"Expected ClassifierConfig but got {type(config).__name__}. "
-            "Check config file."
-        )
+        msg = f"Expected ClassifierConfig but got {type(config).__name__}. Check config file."
         raise SystemExit(msg)
 
     result = train_classifier(config)
@@ -155,10 +152,7 @@ def _cmd_analyze_data(config_path: str, output_dir: str) -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     if not isinstance(config, ClassifierConfig):
-        msg = (
-            f"Expected ClassifierConfig but got {type(config).__name__}. "
-            "Check config file."
-        )
+        msg = f"Expected ClassifierConfig but got {type(config).__name__}. Check config file."
         raise SystemExit(msg)
 
     splits, metadata = build_classifier_splits(config.data)
@@ -175,8 +169,7 @@ def _cmd_encode(checkpoint: str, text: str, device: str) -> None:
     encoder = EmotionEncoder(checkpoint, device=device)
     vector = encoder.encode(text)
     payload = {
-        label: float(value)
-        for label, value in zip(encoder.label_names, vector, strict=False)
+        label: float(value) for label, value in zip(encoder.label_names, vector, strict=False)
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 

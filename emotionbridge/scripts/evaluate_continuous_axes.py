@@ -245,8 +245,7 @@ def run_evaluation(
             "label": "Conditional-Go" if conditional_go else "No-Go",
             "continuous_axes_go": conditional_go,
             "message": (
-                "6感情クラスタリングはNo-Goだが連続軸回帰が閾値を満たすため、"
-                "連続軸ベース設計として進行可能。"
+                "6感情クラスタリングはNo-Goだが連続軸回帰が閾値を満たすため、連続軸ベース設計として進行可能。"
                 if conditional_go
                 else "連続軸回帰も閾値を満たさないため、再設計が必要。"
             ),
@@ -285,8 +284,7 @@ def run_evaluation(
 
     for emotion, payload in result["pca_centroids"].items():
         lines.append(
-            f"| {emotion} | {payload['pc1']:.4f} | {payload['pc2']:.4f} | "
-            f"{payload['arousal']:.2f} | {payload['valence']:.2f} |",
+            f"| {emotion} | {payload['pc1']:.4f} | {payload['pc2']:.4f} | {payload['arousal']:.2f} | {payload['valence']:.2f} |",
         )
 
     with output_md.open("w", encoding="utf-8") as file:

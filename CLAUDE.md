@@ -33,7 +33,7 @@ uv run python main.py train --config configs/classifier.yaml
 uv run accelerate launch main.py train --config configs/classifier.yaml  # 推奨
 uv run python main.py analyze-data --config configs/classifier.yaml
 uv run python main.py encode \
-  --checkpoint artifacts/classifier/checkpoints/best_model.pt \
+  --checkpoint artifacts/classifier/checkpoints/best_model \
   --text "今日は楽しかった！"
 
 # --- Phase 1: 音声サンプル生成（要 VOICEVOX Engine） ---
@@ -98,7 +98,7 @@ WRIME (shunk031/wrime on HF Hub)
   → training/classifier_trainer.py: CrossEntropy + inverse_frequency class weighting
   → model/classifier.py: BERT [CLS] → Dropout → Linear(768→256) → ReLU → Dropout → Linear(256→6)
   → forward() → logits, predict_proba() → softmax (6D確率)
-  → artifacts/classifier/checkpoints/best_model.pt
+  → artifacts/classifier/checkpoints/best_model
   → inference/encoder.py: EmotionEncoder → encode() returns numpy (6,)
 ```
 
@@ -134,7 +134,7 @@ EmotionEncoder(6D probs) → DeterministicMixer(5D params) → RuleBasedStyleSel
 
 ```
 artifacts/
-├── classifier/checkpoints/best_model.pt, reports/
+├── classifier/checkpoints/best_model, reports/
 ├── audio_gen/audio/, dataset/triplet_dataset.parquet
 ├── generator/checkpoints/best_generator.pt
 └── prosody/v01/ (JVNV), v02/ (VOICEVOX), v03/ (matching), style_mapping.json
@@ -153,4 +153,4 @@ HuggingFace Accelerate で mixed precision (`fp16`/`bf16`)、gradient accumulati
 
 ## Language
 
-日本語テキスト処理。BERT: `cl-tohoku/bert-base-japanese-whole-word-masking`。Tokenizer 依存: `fugashi` + `ipadic` + `unidic-lite`。コード中のコメント・ドキュメントは日本語。
+日本語テキスト処理。BERT: `tohoku-nlp/bert-base-japanese-whole-word-masking`。Tokenizer 依存: `fugashi` + `ipadic` + `unidic-lite`。コード中のコメント・ドキュメントは日本語。

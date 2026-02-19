@@ -87,9 +87,7 @@ def _cross_domain_normalize(
         col for col, is_valid in zip(feature_cols, valid_mask, strict=True) if is_valid
     ]
     dropped_features = [
-        col
-        for col, is_valid in zip(feature_cols, valid_mask, strict=True)
-        if not is_valid
+        col for col, is_valid in zip(feature_cols, valid_mask, strict=True) if not is_valid
     ]
 
     jvnv_aligned = jvnv_df.copy()
@@ -101,9 +99,7 @@ def _cross_domain_normalize(
     ]:
         for i, col in enumerate(feature_cols):
             if valid_mask[i]:
-                df_aligned[col] = (features_raw[:, i] - pooled_means[i]) / pooled_stds[
-                    i
-                ]
+                df_aligned[col] = (features_raw[:, i] - pooled_means[i]) / pooled_stds[i]
 
     jvnv_aligned = jvnv_aligned.drop(columns=dropped_features, errors="ignore")
     voicevox_aligned = voicevox_aligned.drop(columns=dropped_features, errors="ignore")
@@ -114,14 +110,10 @@ def _cross_domain_normalize(
         "num_jvnv_rows": len(jvnv_df),
         "num_voicevox_rows": len(voicevox_df),
         "pooled_means": {
-            col: float(pooled_means[i])
-            for i, col in enumerate(feature_cols)
-            if valid_mask[i]
+            col: float(pooled_means[i]) for i, col in enumerate(feature_cols) if valid_mask[i]
         },
         "pooled_stds": {
-            col: float(pooled_stds[i])
-            for i, col in enumerate(feature_cols)
-            if valid_mask[i]
+            col: float(pooled_stds[i]) for i, col in enumerate(feature_cols) if valid_mask[i]
         },
     }
 
@@ -143,9 +135,7 @@ def run_alignment(
     config = load_experiment_config(config_path)
     v01_dir = resolve_path(config.v01.output_dir)
     v02_dir = resolve_path(config.v02.output_dir)
-    v03_dir = (
-        resolve_path(output_dir) if output_dir else resolve_path(config.v03.output_dir)
-    )
+    v03_dir = resolve_path(output_dir) if output_dir else resolve_path(config.v03.output_dir)
     v03_dir.mkdir(parents=True, exist_ok=True)
 
     jvnv_path = (

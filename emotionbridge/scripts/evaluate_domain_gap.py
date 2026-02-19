@@ -185,20 +185,13 @@ def run_evaluation(
         if voicevox_normalized
         else v02_dir / "voicevox_egemaps_normalized.parquet"
     )
-    jvnv_raw_path = (
-        resolve_path(jvnv_raw) if jvnv_raw else v01_dir / "jvnv_egemaps_raw.parquet"
-    )
+    jvnv_raw_path = resolve_path(jvnv_raw) if jvnv_raw else v01_dir / "jvnv_egemaps_raw.parquet"
     voice_raw_path = (
-        resolve_path(voicevox_raw)
-        if voicevox_raw
-        else v02_dir / "voicevox_egemaps_raw.parquet"
+        resolve_path(voicevox_raw) if voicevox_raw else v02_dir / "voicevox_egemaps_raw.parquet"
     )
 
     if not jvnv_norm_path.exists() or not voice_norm_path.exists():
-        msg = (
-            "Normalized feature files are required. "
-            f"jvnv={jvnv_norm_path.exists()}, voicevox={voice_norm_path.exists()}"
-        )
+        msg = f"Normalized feature files are required. jvnv={jvnv_norm_path.exists()}, voicevox={voice_norm_path.exists()}"
         raise FileNotFoundError(msg)
 
     jvnv_norm = read_parquet(jvnv_norm_path).copy()
@@ -276,9 +269,7 @@ def run_evaluation(
 
     mean_after = float(np.mean(list(norm_wasserstein.values())))
     mean_before = (
-        float(np.mean(list(raw_wasserstein.values())))
-        if raw_wasserstein
-        else float("nan")
+        float(np.mean(list(raw_wasserstein.values()))) if raw_wasserstein else float("nan")
     )
     shrink = float(mean_before - mean_after) if raw_wasserstein else float("nan")
 

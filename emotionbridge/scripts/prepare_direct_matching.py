@@ -189,11 +189,7 @@ def run_prepare(
     ]
 
     report_lines.extend(
-        "| "
-        f"{row['emotion']} | {row.get('ctrl_pitch_shift', 0.0):.4f} | "
-        f"{row.get('ctrl_pitch_range', 0.0):.4f} | {row.get('ctrl_speed', 0.0):.4f} | "
-        f"{row.get('ctrl_energy', 0.0):.4f} | {row.get('ctrl_pause_weight', 0.0):.4f} | "
-        f"{int(row['num_matches'])} | {row['distance_mean']:.6f} |"
+        f"| {row['emotion']} | {row.get('ctrl_pitch_shift', 0.0):.4f} | {row.get('ctrl_pitch_range', 0.0):.4f} | {row.get('ctrl_speed', 0.0):.4f} | {row.get('ctrl_energy', 0.0):.4f} | {row.get('ctrl_pause_weight', 0.0):.4f} | {int(row['num_matches'])} | {row['distance_mean']:.6f} |"
         for row in profile_rows
     )
 

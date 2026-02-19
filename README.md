@@ -81,7 +81,7 @@ uv run python main.py analyze-data --config configs/classifier.yaml
 
 # 推論
 uv run python main.py encode \
-  --checkpoint artifacts/classifier/checkpoints/best_model.pt \
+  --checkpoint artifacts/classifier/checkpoints/best_model \
   --text "今日は楽しかった！"
 ```
 
@@ -137,7 +137,7 @@ uv run python main.py bridge \
   --text "今日は楽しかった！" \
   --output output.wav \
   --character zundamon \
-  --classifier-checkpoint artifacts/classifier/checkpoints/best_model.pt \
+  --classifier-checkpoint artifacts/classifier/checkpoints/best_model \
   --generator-checkpoint artifacts/generator/checkpoints/best_generator.pt \
   --style-mapping artifacts/prosody/style_mapping.json
 ```
@@ -159,7 +159,7 @@ uv run python -m emotionbridge.scripts.prepare_subjective_eval \
   --dataset-path artifacts/phase1_multistyle_smoke/dataset/triplet_dataset.parquet \
   --output-dir artifacts/phase3/subjective_eval/pilot_v01 \
   --character zundamon \
-  --classifier-checkpoint artifacts/classifier/checkpoints/best_model.pt \
+  --classifier-checkpoint artifacts/classifier/checkpoints/best_model \
   --generator-checkpoint artifacts/generator/checkpoints/best_generator.pt \
   --style-mapping artifacts/prosody/style_mapping.json
 
@@ -175,7 +175,7 @@ uv run python -m emotionbridge.scripts.analyze_subjective_eval \
 ```python
 from emotionbridge import EmotionEncoder
 
-encoder = EmotionEncoder("artifacts/classifier/checkpoints/best_model.pt", device="cuda")
+encoder = EmotionEncoder("artifacts/classifier/checkpoints/best_model", device="cuda")
 probs = encoder.encode("今日は楽しかった！")          # numpy array (6,)
 batch = encoder.encode_batch(["嬉しい", "少し不安"])  # numpy array (N, 6)
 ```
@@ -186,7 +186,7 @@ batch = encoder.encode_batch(["嬉しい", "少し不安"])  # numpy array (N, 6
 from emotionbridge.inference import create_pipeline
 
 pipeline = await create_pipeline(
-    classifier_checkpoint="artifacts/classifier/checkpoints/best_model.pt",
+    classifier_checkpoint="artifacts/classifier/checkpoints/best_model",
     generator_checkpoint="artifacts/generator/checkpoints/best_generator.pt",
     style_mapping="artifacts/prosody/style_mapping.json",
     voicevox_url="http://127.0.0.1:50021",

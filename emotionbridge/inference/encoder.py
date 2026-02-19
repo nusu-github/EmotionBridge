@@ -1,14 +1,20 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from emotionbridge.constants import JVNV_EMOTION_LABELS
-from emotionbridge.model import TextEmotionClassifier
 
 
 class EmotionEncoder:
+    """テキストから感情確率ベクトルを抽出するエンコーダ。
+
+    Trainer で保存された HF 形式のモデルディレクトリからロードします。
+    """
+
     def __init__(self, checkpoint_path: str, device: str = "cuda") -> None:
         self.checkpoint_path = Path(checkpoint_path)
         if not self.checkpoint_path.exists():
@@ -19,45 +25,23 @@ class EmotionEncoder:
             "cuda" if (device == "cuda" and torch.cuda.is_available()) else "cpu",
         )
 
-        checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
-        model_type = str(checkpoint.get("model_type", "regressor"))
-        model_config = checkpoint.get("model_config", {})
-        tokenizer_name = checkpoint.get("tokenizer_name")
-        if tokenizer_name is None:
-            msg = "tokenizer_name not found in checkpoint"
-            raise ValueError(msg)
-
-        if model_type != "classifier":
-            msg = (
-                f"Unsupported model_type '{model_type}'. "
-                "Only classifier checkpoints are supported."
-            )
-            raise ValueError(msg)
-
-        pretrained_model_name = model_config.get(
-            "pretrained_model_name",
-            tokenizer_name,
-        )
-        self.max_length = int(checkpoint.get("max_length", 128))
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-
-        default_labels = JVNV_EMOTION_LABELS
-        num_classes = int(
-            model_config.get(
-                "num_classes",
-                len(checkpoint.get("emotion_labels", default_labels)),
-            ),
-        )
-        self.model = TextEmotionClassifier(
-            pretrained_model_name=pretrained_model_name,
-            num_classes=num_classes,
-            bottleneck_dim=model_config.get("bottleneck_dim", 256),
-            dropout=model_config.get("dropout", 0.1),
-        ).to(self.device)
-
-        self._label_names = list(checkpoint.get("emotion_labels", default_labels))
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        # HF 標準の方法でモデルとトークナイザをロード
+        # モデルディレクトリに保存された config.json から num_labels, id2label 等が自動復元される
+        self.model = AutoModelForSequenceClassification.from_pretrained(str(self.checkpoint_path))
+        self.model.to(self.device)
         self.model.eval()
+
+        self.tokenizer = AutoTokenizer.from_pretrained(str(self.checkpoint_path))
+
+        # ラベル名のリストを保持（JVNV の順序を期待）
+        if self.model.config.id2label:
+            self._label_names = [
+                self.model.config.id2label[i] for i in range(len(self.model.config.id2label))
+            ]
+        else:
+            self._label_names = JVNV_EMOTION_LABELS
+
+        self.max_length = getattr(self.model.config, "max_position_embeddings", 512)
 
     def encode(self, text: str) -> np.ndarray:
         result = self.encode_batch([text])
@@ -79,8 +63,9 @@ class EmotionEncoder:
                     return_tensors="pt",
                 )
                 encoded = {k: v.to(self.device) for k, v in encoded.items()}
-                preds = self.model.predict_proba(**encoded)
-                outputs.append(preds.detach().cpu().numpy())
+                logits = self.model(**encoded).logits
+                probs = torch.softmax(logits, dim=-1)
+                outputs.append(probs.detach().cpu().numpy())
 
         return np.vstack(outputs).astype(np.float32)
 

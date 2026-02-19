@@ -95,10 +95,7 @@ def _control_columns(df: pd.DataFrame) -> list[str]:
 
 
 def _feature_mapping(feature_names: list[str], values: np.ndarray) -> dict[str, float]:
-    return {
-        feature: float(value)
-        for feature, value in zip(feature_names, values, strict=False)
-    }
+    return {feature: float(value) for feature, value in zip(feature_names, values, strict=False)}
 
 
 def _build_jvnv_profiles_payload(
@@ -121,13 +118,11 @@ def _build_jvnv_profiles_payload(
         feature_matrix = subset[feature_cols].to_numpy(dtype=np.float64, copy=False)
         centroid = feature_matrix.mean(axis=0)
         stddev = feature_matrix.std(axis=0, ddof=0)
-        if len(feature_matrix) > 1:
-            covariance = np.cov(feature_matrix, rowvar=False, bias=True)
-        else:
-            covariance = np.zeros(
-                (len(feature_cols), len(feature_cols)),
-                dtype=np.float64,
-            )
+        covariance = (
+            np.cov(feature_matrix, rowvar=False, bias=True)
+            if len(feature_matrix) > 1
+            else np.zeros((len(feature_cols), len(feature_cols)), dtype=np.float64)
+        )
 
         covariance_path = covariance_dir / f"{emotion}_cov.npy"
         np.save(covariance_path, covariance)
@@ -164,8 +159,7 @@ def _build_recommended_params_payload(
 
         control_summary = emotion_summary["control_summary"]
         emotions[emotion] = {
-            control: float(values["median"])
-            for control, values in control_summary.items()
+            control: float(values["median"]) for control, values in control_summary.items()
         }
 
     return {
@@ -276,8 +270,7 @@ def run_matching(
         feature_weights = _load_feature_weights(v02_dir, feature_cols)
         if feature_weights is None:
             logger.warning(
-                "重み付き距離を要求されたが feature_weights.json が見つからない: %s"
-                " → unweighted L2にフォールバック",
+                "重み付き距離を要求されたが feature_weights.json が見つからない: %s → unweighted L2にフォールバック",
                 v02_dir,
             )
             distance_metric = "euclidean"
@@ -292,14 +285,13 @@ def run_matching(
         if j_subset.empty:
             continue
 
-        centroid = (
-            j_subset[feature_cols].to_numpy(dtype=np.float32, copy=False).mean(axis=0)
-        )
+        centroid = j_subset[feature_cols].to_numpy(dtype=np.float32, copy=False).mean(axis=0)
         diff = voice_features - centroid[None, :]
-        if distance_metric == "weighted_euclidean" and feature_weights is not None:
-            distances = np.sqrt(np.sum(feature_weights[None, :] * diff**2, axis=1))
-        else:
-            distances = np.linalg.norm(diff, axis=1)
+        distances = (
+            np.sqrt(np.sum(feature_weights[None, :] * diff**2, axis=1))
+            if distance_metric == "weighted_euclidean" and feature_weights is not None
+            else np.linalg.norm(diff, axis=1)
+        )
         nearest_indices = np.argsort(distances)[:top_k]
         nearest_df = voice_df.iloc[nearest_indices].copy()
         nearest_df["target_emotion"] = emotion
@@ -388,11 +380,7 @@ def run_matching(
         )
         for control, control_values in values["control_summary"].items():
             report_lines.append(
-                "- "
-                f"{control}: mean={control_values['mean']:.4f}, "
-                f"median={control_values['median']:.4f}, "
-                f"std={control_values['std']:.4f}, "
-                f"range=[{control_values['min']:.4f}, {control_values['max']:.4f}]",
+                f"- {control}: mean={control_values['mean']:.4f}, median={control_values['median']:.4f}, std={control_values['std']:.4f}, range=[{control_values['min']:.4f}, {control_values['max']:.4f}]",
             )
         report_lines.append("")
 

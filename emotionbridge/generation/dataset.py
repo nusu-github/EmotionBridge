@@ -160,12 +160,8 @@ def load_dataset(path: Path) -> list[TripletRecord]:
     records: list[TripletRecord] = []
 
     for i in range(n_rows):
-        emotion_vec = [
-            float(columns[f"emotion_{label}"][i]) for label in EMOTION_LABELS
-        ]
-        control_params = [
-            float(columns[f"ctrl_{name}"][i]) for name in CONTROL_PARAM_NAMES
-        ]
+        emotion_vec = [float(columns[f"emotion_{label}"][i]) for label in EMOTION_LABELS]
+        control_params = [float(columns[f"ctrl_{name}"][i]) for name in CONTROL_PARAM_NAMES]
         voicevox_params: dict[str, float] = {}
         for key in _VV_PARAM_KEYS:
             col_name = f"vv_{key}"

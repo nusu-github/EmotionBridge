@@ -115,10 +115,7 @@ def _extract_jvnv(config_path: str, jvnv_audio_key: str) -> dict[str, Any]:
     v01_dir = resolve_path(config.v01.output_dir)
     manifest_path = v01_dir / "jvnv_manifest.parquet"
     if not manifest_path.exists():
-        msg = (
-            f"JVNV manifest not found: {manifest_path}. "
-            "先に `python -m emotionbridge.scripts.prepare_jvnv` を実行してください。"
-        )
+        msg = f"JVNV manifest not found: {manifest_path}. 先に `python -m emotionbridge.scripts.prepare_jvnv` を実行してください。"
         raise FileNotFoundError(msg)
 
     manifest_df = read_parquet(manifest_path)
@@ -137,9 +134,7 @@ def _extract_jvnv(config_path: str, jvnv_audio_key: str) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     missing_files = 0
     failures = 0
-    audio_col = (
-        "audio_path_processed" if jvnv_audio_key == "processed" else "audio_path_raw"
-    )
+    audio_col = "audio_path_processed" if jvnv_audio_key == "processed" else "audio_path_raw"
 
     for _, sample in manifest_df.iterrows():
         audio_path = Path(str(sample[audio_col]))
@@ -225,9 +220,7 @@ def _extract_voicevox(config_path: str) -> dict[str, Any]:
         "generation_timestamp",
     ]
     passthrough_columns = [
-        name
-        for name in dataset_df.columns
-        if name.startswith(("ctrl_", "emotion_", "vv_"))
+        name for name in dataset_df.columns if name.startswith(("ctrl_", "emotion_", "vv_"))
     ]
 
     for _, sample in dataset_df.iterrows():
@@ -286,10 +279,11 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
-    if args.source == "jvnv":
-        summary = _extract_jvnv(args.config, args.jvnv_audio_key)
-    else:
-        summary = _extract_voicevox(args.config)
+    summary = (
+        _extract_jvnv(args.config, args.jvnv_audio_key)
+        if args.source == "jvnv"
+        else _extract_voicevox(args.config)
+    )
 
     logger.info("eGeMAPS抽出完了: %s", summary["output_path"])
 

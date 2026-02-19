@@ -1,4 +1,4 @@
-classifier_checkpoint: artifacts/classifier/checkpoints/best_model.pt
+classifier_checkpoint: artifacts/phase0_v2/checkpoints/best_model
 device: cuda
 
 data:
@@ -20,13 +20,13 @@ voicevox:
   output_sampling_rate: 24000
 
 control_space:
-  speed_range: [0.5, 1.5]
+  speed_range: [0.5, 2.0]
   pitch_shift_range: [-0.15, 0.15]
-  pitch_range_range: [0.5, 1.5]
-  energy_range: [0.5, 1.5]
-  pause_pre_range: [0.0, 0.2]
-  pause_post_range: [0.0, 0.2]
-  pause_length_scale_range: [0.5, 1.5]
+  pitch_range_range: [0.0, 2.0]
+  energy_range: [0.0, 2.0]
+  pause_pre_range: [0.0, 1.0]
+  pause_post_range: [0.0, 1.0]
+  pause_length_scale_range: [0.0, 2.0]
 
 grid:
   strategy: lhs

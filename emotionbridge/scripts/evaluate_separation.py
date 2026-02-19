@@ -240,9 +240,7 @@ def run_evaluation(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     source_path = (
-        resolve_path(input_path)
-        if input_path
-        else v01_dir / "jvnv_egemaps_normalized.parquet"
+        resolve_path(input_path) if input_path else v01_dir / "jvnv_egemaps_normalized.parquet"
     )
     if not source_path.exists():
         msg = f"Input not found: {source_path}"
@@ -376,9 +374,7 @@ def run_evaluation(
         "|---|---:|---:|---:|---:|",
     ]
     report_lines.extend(
-        "| "
-        f"{row['emotion_left']} | {row['emotion_right']} | {row['silhouette']:.4f} | "
-        f"{row['permanova_pseudo_f']:.4f} | {row['permanova_p_value']:.6f} |"
+        f"| {row['emotion_left']} | {row['emotion_right']} | {row['silhouette']:.4f} | {row['permanova_pseudo_f']:.4f} | {row['permanova_p_value']:.6f} |"
         for row in pairwise
     )
 

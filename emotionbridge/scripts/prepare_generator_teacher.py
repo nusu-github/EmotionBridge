@@ -46,9 +46,7 @@ def _validate_recommended(payload: dict[str, Any]) -> dict[str, Any]:
         msg = "Invalid recommended_params: 'emotions' must be a dictionary"
         raise ValueError(msg)
 
-    missing_emotions = [
-        emotion for emotion in JVNV_EMOTION_LABELS if emotion not in emotions
-    ]
+    missing_emotions = [emotion for emotion in JVNV_EMOTION_LABELS if emotion not in emotions]
     if missing_emotions:
         msg = f"Missing emotions in recommended_params: {missing_emotions}"
         raise ValueError(msg)
@@ -60,9 +58,7 @@ def _validate_recommended(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(msg)
 
         missing_controls = [
-            f"ctrl_{name}"
-            for name in CONTROL_PARAM_NAMES
-            if f"ctrl_{name}" not in controls
+            f"ctrl_{name}" for name in CONTROL_PARAM_NAMES if f"ctrl_{name}" not in controls
         ]
         if missing_controls:
             msg = f"Missing controls for emotion={emotion}: {missing_controls}"
@@ -122,10 +118,7 @@ def run_prepare(
         controls = emotions[emotion]
         row = {
             "emotion": emotion,
-            **{
-                f"ctrl_{name}": float(controls[f"ctrl_{name}"])
-                for name in CONTROL_PARAM_NAMES
-            },
+            **{f"ctrl_{name}": float(controls[f"ctrl_{name}"]) for name in CONTROL_PARAM_NAMES},
         }
         table_rows.append(row)
         matrix_rows.append(
