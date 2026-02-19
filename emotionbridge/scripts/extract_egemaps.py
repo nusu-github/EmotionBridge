@@ -93,7 +93,7 @@ def _extract_row(smile, audio_path: Path) -> dict[str, float]:
 def _resolve_audio_path(
     audio_path: str,
     *,
-    phase1_output_dir: Path,
+    audio_gen_output_dir: Path,
     dataset_dir: Path,
 ) -> Path | None:
     candidate = Path(audio_path)
@@ -101,7 +101,7 @@ def _resolve_audio_path(
         return candidate if candidate.exists() else None
 
     for path in [
-        phase1_output_dir / candidate,
+        audio_gen_output_dir / candidate,
         dataset_dir / candidate,
         Path.cwd() / candidate,
     ]:
@@ -197,21 +197,21 @@ def _extract_jvnv(config_path: str, jvnv_audio_key: str) -> dict[str, Any]:
 
 def _extract_voicevox(config_path: str) -> dict[str, Any]:
     config = load_experiment_config(config_path)
-    phase1_dataset_path = resolve_path(config.paths.phase1_dataset_path)
-    phase1_output_dir = resolve_path(config.paths.phase1_output_dir)
+    triplet_dataset_path = resolve_path(config.paths.triplet_dataset_path)
+    audio_gen_output_dir = resolve_path(config.paths.audio_gen_output_dir)
     v02_dir = resolve_path(config.v02.output_dir)
     v02_dir.mkdir(parents=True, exist_ok=True)
 
-    if not phase1_dataset_path.exists():
-        msg = f"Phase1 dataset not found: {phase1_dataset_path}"
+    if not triplet_dataset_path.exists():
+        msg = f"Triplet dataset not found: {triplet_dataset_path}"
         raise FileNotFoundError(msg)
 
-    dataset_df = read_parquet(phase1_dataset_path)
-    ensure_columns(dataset_df, ["audio_path"], where="Phase1 dataset")
+    dataset_df = read_parquet(triplet_dataset_path)
+    ensure_columns(dataset_df, ["audio_path"], where="triplet dataset")
 
     smile = _build_extractor(config_path)
 
-    dataset_dir = phase1_dataset_path.parent.parent
+    dataset_dir = triplet_dataset_path.parent.parent
     rows: list[dict[str, Any]] = []
     missing_files = 0
     failures = 0
@@ -233,7 +233,7 @@ def _extract_voicevox(config_path: str) -> dict[str, Any]:
     for _, sample in dataset_df.iterrows():
         resolved = _resolve_audio_path(
             str(sample["audio_path"]),
-            phase1_output_dir=phase1_output_dir,
+            audio_gen_output_dir=audio_gen_output_dir,
             dataset_dir=dataset_dir,
         )
         if resolved is None:
@@ -268,7 +268,7 @@ def _extract_voicevox(config_path: str) -> dict[str, Any]:
 
     summary = {
         "source": "voicevox",
-        "input_dataset": str(phase1_dataset_path),
+        "input_dataset": str(triplet_dataset_path),
         "output_path": str(output_path),
         "num_rows": len(feature_df),
         "num_features": len(

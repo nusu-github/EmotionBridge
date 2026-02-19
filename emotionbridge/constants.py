@@ -9,17 +9,8 @@ EMOTION_LABELS = [
     "trust",
 ]
 
-LOW_VARIANCE_EMOTION_LABELS = ["anger", "trust"]
-MAJOR_EMOTION_LABELS = [
-    emotion for emotion in EMOTION_LABELS if emotion not in LOW_VARIANCE_EMOTION_LABELS
-]
-
 NUM_EMOTIONS = len(EMOTION_LABELS)
 LABEL_SCALE_MAX = 3.0
-
-# Phase 0→Phase 1.5: 8D感情ベクトルを連続軸へ写像するための座標
-# 値域は [-1, +1] を想定（Arousal, Valence）
-CIRCUMPLEX_AXIS_NAMES = ["arousal", "valence"]
 
 EMOTION_CIRCUMPLEX_COORDS: dict[str, tuple[float, float]] = {
     "joy": (0.75, 0.80),
@@ -32,7 +23,7 @@ EMOTION_CIRCUMPLEX_COORDS: dict[str, tuple[float, float]] = {
     "trust": (0.20, 0.65),
 }
 
-# Phase 3 で使う共通6感情ラベル向け（JVNV）
+# 共通6感情ラベル向け（JVNV）
 COMMON6_CIRCUMPLEX_COORDS: dict[str, tuple[float, float]] = {
     "anger": EMOTION_CIRCUMPLEX_COORDS["anger"],
     "disgust": EMOTION_CIRCUMPLEX_COORDS["disgust"],
@@ -42,7 +33,7 @@ COMMON6_CIRCUMPLEX_COORDS: dict[str, tuple[float, float]] = {
     "surprise": EMOTION_CIRCUMPLEX_COORDS["surprise"],
 }
 
-# Phase 1: TTS制御空間パラメータ
+# TTS制御空間パラメータ
 CONTROL_PARAM_NAMES: list[str] = [
     "pitch_shift",
     "pitch_range",
@@ -52,7 +43,7 @@ CONTROL_PARAM_NAMES: list[str] = [
 ]
 NUM_CONTROL_PARAMS = len(CONTROL_PARAM_NAMES)
 
-# Phase 3: JVNV感情ラベル
+# JVNV感情ラベル
 JVNV_EMOTION_LABELS = ["anger", "disgust", "fear", "happy", "sad", "surprise"]
 NUM_JVNV_EMOTIONS = len(JVNV_EMOTION_LABELS)
 

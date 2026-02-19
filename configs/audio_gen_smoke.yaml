@@ -1,4 +1,4 @@
-phase0_checkpoint: artifacts/phase0/checkpoints/best_model.pt
+classifier_checkpoint: artifacts/classifier/checkpoints/best_model.pt
 device: cuda
 
 data:
@@ -29,13 +29,15 @@ control_space:
 
 grid:
   strategy: lhs
-  lhs_samples_per_text: 128
+  lhs_samples_per_text: 2
   random_seed: 42
 
 text_selection:
-  num_texts: 200
-  texts_per_emotion: 25
-  intensity_bins: 3
+  texts_per_emotion: 1
+  intensity_bins: 2
+  min_text_length: 5
+  max_text_length: 120
+  random_seed: 42
 
 validation:
   min_file_size_bytes: 1024
@@ -43,7 +45,7 @@ validation:
   min_rms_amplitude: 0.001
 
 generation:
-  output_dir: artifacts/phase1
-  max_concurrent_requests: 4
-  checkpoint_interval: 100
+  output_dir: artifacts/audio_gen_smoke
+  max_concurrent_requests: 2
+  checkpoint_interval: 20
   skip_existing: true

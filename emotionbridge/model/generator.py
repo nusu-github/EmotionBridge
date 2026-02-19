@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 class ParameterGenerator(nn.Module):
     """6D感情確率ベクトルを5D制御パラメータへ写像する（NN版）。
 
-    Phase 4でテキスト埋め込みを入力に追加する際にはこちらを拡張する。
-    Phase 3のデフォルトはDeterministicMixer。
+    テキスト埋め込みを入力に追加する際にはこちらを拡張する。
+    デフォルトはDeterministicMixer。
     """
 
     def __init__(

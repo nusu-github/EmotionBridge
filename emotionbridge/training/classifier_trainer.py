@@ -17,7 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, get_linear_schedule_with_warmup
 
-from emotionbridge.config import Phase0ClassifierConfig, save_effective_config
+from emotionbridge.config import ClassifierConfig, save_effective_config
 from emotionbridge.constants import (
     JVNV_EMOTION_LABELS,
     KEY_EMOTION_LABELS,
@@ -25,7 +25,7 @@ from emotionbridge.constants import (
 )
 from emotionbridge.data import (
     build_classifier_data_report,
-    build_phase0_classifier_splits,
+    build_classifier_splits,
 )
 from emotionbridge.model import TextEmotionClassifier
 from emotionbridge.training.classification_metrics import compute_classification_metrics
@@ -143,7 +143,7 @@ def _compute_loss(
 
 
 def _resolve_class_weights(
-    config: Phase0ClassifierConfig,
+    config: ClassifierConfig,
     train_labels: np.ndarray,
     device: torch.device,
 ) -> tuple[torch.Tensor | None, dict[str, Any]]:
@@ -211,8 +211,8 @@ def _build_weighted_sampler(labels: np.ndarray) -> WeightedRandomSampler:
     )
 
 
-def _create_dataloaders(config: Phase0ClassifierConfig, tokenizer: Any):
-    splits, metadata = build_phase0_classifier_splits(config.data)
+def _create_dataloaders(config: ClassifierConfig, tokenizer: Any):
+    splits, metadata = build_classifier_splits(config.data)
     collator = ClassifierBatchCollator(
         tokenizer=tokenizer,
         max_length=config.data.max_length,
@@ -364,7 +364,7 @@ def _run_eval(
 
 def _go_no_go_classifier(
     metrics: dict[str, Any],
-    config: Phase0ClassifierConfig,
+    config: ClassifierConfig,
 ) -> dict[str, Any]:
     key_emotions = config.eval.key_emotions or KEY_EMOTION_LABELS
 
@@ -398,7 +398,7 @@ def _go_no_go_classifier(
     }
 
 
-def _validate_settings(config: Phase0ClassifierConfig) -> None:
+def _validate_settings(config: ClassifierConfig) -> None:
     if config.train.gradient_accumulation_steps < 1:
         msg = "train.gradient_accumulation_steps must be >= 1"
         raise ValueError(msg)
@@ -455,7 +455,7 @@ def _load_transfer_weights(
     }
 
 
-def train_phase0_classifier(config: Phase0ClassifierConfig) -> dict[str, Any] | None:
+def train_classifier(config: ClassifierConfig) -> dict[str, Any] | None:
     _validate_settings(config)
     _set_seed(config.data.random_seed)
 

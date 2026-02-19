@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-from emotionbridge.config import Phase1Config
+from emotionbridge.config import AudioGenConfig
 from emotionbridge.data.wrime import PreparedSplit
 from emotionbridge.generation.dataset import (
     TripletRecord,
@@ -65,10 +65,10 @@ class GenerationPipeline:
     中断・再開に対応する。
     """
 
-    def __init__(self, config: Phase1Config) -> None:
+    def __init__(self, config: AudioGenConfig) -> None:
         self._config = config
         self._encoder = EmotionEncoder(
-            checkpoint_path=config.phase0_checkpoint,
+            checkpoint_path=config.classifier_checkpoint,
             device=config.device,
         )
         self._sampler = GridSampler(config.grid)
@@ -102,7 +102,7 @@ class GenerationPipeline:
         6. レポート生成
 
         Args:
-            splits: build_phase0_splits() の出力。
+            splits: build_wrime_splits() の出力。
 
         Returns:
             GenerationReport。
@@ -237,7 +237,7 @@ class GenerationPipeline:
 
             metadata = {
                 "version": "1.0.0",
-                "phase": "phase1",
+                "pipeline": "audio_gen",
                 "created_at": datetime.now(tz=UTC).isoformat(),
                 "config": self._config.to_dict(),
                 "statistics": {
@@ -250,7 +250,7 @@ class GenerationPipeline:
                     "total_audio_size_bytes": total_audio_size,
                     "dominant_emotion_distribution": emotion_dist,
                 },
-                "phase0_checkpoint": self._config.phase0_checkpoint,
+                "classifier_checkpoint": self._config.classifier_checkpoint,
             }
             save_metadata(metadata, dataset_dir / "metadata.json")
 

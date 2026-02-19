@@ -2,7 +2,7 @@
 
 TripletRecord のリストを Apache Parquet 形式で書き出し・読み込みする。
 列名規則:
-- emotion_*: Phase 0感情エンコーダ出力 (8列)
+- emotion_*: 感情エンコーダ出力 (8列)
 - ctrl_*: 制御空間パラメータ (5列, [-1, +1])
 - vv_*: VOICEVOX AudioQueryに適用された実値
 """

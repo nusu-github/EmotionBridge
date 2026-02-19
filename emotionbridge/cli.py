@@ -4,26 +4,18 @@ import json
 import logging
 from pathlib import Path
 
-from transformers import AutoTokenizer
-
 from emotionbridge.config import (
-    Phase0ClassifierConfig,
-    Phase0Config,
-    Phase1Config,
+    AudioGenConfig,
+    ClassifierConfig,
     load_config,
 )
 from emotionbridge.data import (
     build_classifier_data_report,
-    build_data_report,
-    build_phase0_classifier_splits,
-    build_phase0_splits,
-    estimate_unk_ratio,
-    plot_cooccurrence_matrix,
-    plot_emotion_means_comparison,
-    plot_intensity_histograms,
+    build_classifier_splits,
+    build_wrime_splits,
 )
 from emotionbridge.inference import EmotionEncoder
-from emotionbridge.training import train_phase0, train_phase0_classifier
+from emotionbridge.training import train_classifier
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +27,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # --- Phase 0 コマンド ---
+    # --- 分類器コマンド ---
 
     train_parser = subparsers.add_parser(
         "train",
-        help="Train Phase 0 text emotion encoder",
+        help="Train text emotion classifier",
     )
     train_parser.add_argument(
         "--config",
-        default="configs/phase0.yaml",
+        default="configs/classifier.yaml",
         help="Path to YAML config",
     )
 
@@ -53,12 +45,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     analyze_parser.add_argument(
         "--config",
-        default="configs/phase0.yaml",
+        default="configs/classifier.yaml",
         help="Path to YAML config",
     )
     analyze_parser.add_argument(
         "--output-dir",
-        default="artifacts/phase0/reports",
+        default="artifacts/classifier/reports",
         help="Directory for plots and report",
     )
 
@@ -73,14 +65,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     encode_parser.add_argument("--text", required=True, help="Input text")
     encode_parser.add_argument("--device", default="cuda", help="cuda or cpu")
-    encode_parser.add_argument(
-        "--output-format",
-        choices=["emotion8d", "av2d", "both"],
-        default="emotion8d",
-        help="Inference output format",
-    )
 
-    # --- Phase 1 コマンド ---
+    # --- 音声生成コマンド ---
 
     gen_parser = subparsers.add_parser(
         "generate-samples",
@@ -88,8 +74,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     gen_parser.add_argument(
         "--config",
-        default="configs/phase1.yaml",
-        help="Path to Phase 1 YAML config",
+        default="configs/audio_gen.yaml",
+        help="Path to audio generation YAML config",
     )
 
     speakers_parser = subparsers.add_parser(
@@ -98,36 +84,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     speakers_parser.add_argument(
         "--config",
-        default="configs/phase1.yaml",
-        help="Path to Phase 1 YAML config",
-    )
-
-    synth_parser = subparsers.add_parser(
-        "synthesize",
-        help="Synthesize emotional speech from text (heuristic mapping)",
-    )
-    synth_parser.add_argument(
-        "--config",
-        default="configs/phase1.yaml",
-        help="Path to Phase 1 YAML config",
-    )
-    synth_parser.add_argument("--text", required=True, help="Input text")
-    synth_parser.add_argument(
-        "--output",
-        default="output.wav",
-        help="Output WAV file path",
-    )
-    synth_parser.add_argument(
-        "--speaker-id",
-        type=int,
-        default=None,
-        help="VOICEVOX speaker style ID (overrides config)",
-    )
-    synth_parser.add_argument(
-        "--mapping-space",
-        choices=["emotion8d", "av2d"],
-        default="av2d",
-        help="Control mapping space",
+        default="configs/audio_gen.yaml",
+        help="Path to audio generation YAML config",
     )
 
     bridge_parser = subparsers.add_parser(
@@ -147,17 +105,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     bridge_parser.add_argument(
         "--classifier-checkpoint",
-        default="artifacts/phase0_v2/checkpoints/best_model.pt",
+        default="artifacts/classifier/checkpoints/best_model.pt",
         help="Path to classifier checkpoint",
     )
     bridge_parser.add_argument(
         "--generator-checkpoint",
-        default="artifacts/phase3b/checkpoints/best_generator.pt",
+        default="artifacts/generator/checkpoints/best_generator.pt",
         help="Path to generator checkpoint",
     )
     bridge_parser.add_argument(
         "--style-mapping",
-        default="artifacts/phase3/style_mapping.json",
+        default="artifacts/prosody/style_mapping.json",
         help="Path to style mapping JSON",
     )
     bridge_parser.add_argument(
@@ -178,16 +136,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _cmd_train(config_path: str) -> None:
     config = load_config(config_path)
-    if isinstance(config, Phase0ClassifierConfig):
-        result = train_phase0_classifier(config)
-    elif isinstance(config, Phase0Config):
-        result = train_phase0(config)
-    else:
+    if not isinstance(config, ClassifierConfig):
         msg = (
-            "Expected Phase0Config/Phase0ClassifierConfig but got "
-            f"{type(config).__name__}. Check config file."
+            f"Expected ClassifierConfig but got {type(config).__name__}. "
+            "Check config file."
         )
         raise SystemExit(msg)
+
+    result = train_classifier(config)
 
     if result is not None:
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -198,85 +154,29 @@ def _cmd_analyze_data(config_path: str, output_dir: str) -> None:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    if isinstance(config, Phase0ClassifierConfig):
-        splits, metadata = build_phase0_classifier_splits(config.data)
-        report = build_classifier_data_report(splits, metadata)
-
-        with (out / "data_report.json").open("w", encoding="utf-8") as f:
-            json.dump(report, f, ensure_ascii=False, indent=2)
-
-        print(json.dumps(report, ensure_ascii=False, indent=2))
-        print(f"\nReport saved to {out / 'data_report.json'}")
-        print(
-            "分類タスク用analyze-dataでは強度ヒストグラム等の8D回帰向け図は出力しません。",
-        )
-        return
-
-    if not isinstance(config, Phase0Config):
+    if not isinstance(config, ClassifierConfig):
         msg = (
-            f"Expected Phase0Config but got {type(config).__name__}. Check config file."
+            f"Expected ClassifierConfig but got {type(config).__name__}. "
+            "Check config file."
         )
         raise SystemExit(msg)
 
-    splits, metadata = build_phase0_splits(config.data)
-    tokenizer = AutoTokenizer.from_pretrained(config.model.pretrained_model_name)
-    report = build_data_report(splits, metadata)
-    report["unk_ratio_train"] = estimate_unk_ratio(tokenizer, splits["train"].texts)
+    splits, metadata = build_classifier_splits(config.data)
+    report = build_classifier_data_report(splits, metadata)
 
     with (out / "data_report.json").open("w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
 
-    plot_intensity_histograms(splits, out / "intensity_histograms.png")
-    plot_cooccurrence_matrix(splits["train"], out / "cooccurrence_matrix.png")
-    plot_emotion_means_comparison(splits, out / "emotion_means.png")
-
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    print(f"\nPlots saved to {out}/")
-    print("  - intensity_histograms.png")
-    print("  - cooccurrence_matrix.png")
-    print("  - emotion_means.png")
+    print(f"\nReport saved to {out / 'data_report.json'}")
 
 
-def _cmd_encode(checkpoint: str, text: str, device: str, output_format: str) -> None:
-    from emotionbridge.constants import CIRCUMPLEX_AXIS_NAMES
-
+def _cmd_encode(checkpoint: str, text: str, device: str) -> None:
     encoder = EmotionEncoder(checkpoint, device=device)
-    if output_format == "emotion8d":
-        vector = encoder.encode(text)
-        print(json.dumps(vector.tolist(), ensure_ascii=False))
-        return
-
-    if output_format == "av2d":
-        try:
-            av = encoder.encode_av(text)
-        except NotImplementedError as exc:
-            raise SystemExit(str(exc)) from exc
-        print(json.dumps(av.tolist(), ensure_ascii=False))
-        return
-
     vector = encoder.encode(text)
-    emotion_payload = {
+    payload = {
         label: float(value)
         for label, value in zip(encoder.label_names, vector, strict=False)
-    }
-
-    if encoder.is_classifier:
-        print(
-            json.dumps(
-                {"emotion": emotion_payload},
-                ensure_ascii=False,
-                indent=2,
-            ),
-        )
-        return
-
-    av = encoder.encode_av(text)
-    payload = {
-        "emotion8d": emotion_payload,
-        "continuous_axes": {
-            CIRCUMPLEX_AXIS_NAMES[0]: float(av[0]),
-            CIRCUMPLEX_AXIS_NAMES[1]: float(av[1]),
-        },
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
@@ -286,10 +186,8 @@ def _cmd_generate_samples(config_path: str) -> None:
     from emotionbridge.generation.pipeline import GenerationPipeline
 
     config = load_config(config_path)
-    if not isinstance(config, Phase1Config):
-        msg = (
-            f"Expected Phase1Config but got {type(config).__name__}. Check config file."
-        )
+    if not isinstance(config, AudioGenConfig):
+        msg = f"Expected AudioGenConfig but got {type(config).__name__}. Check config file."
         raise SystemExit(msg)
 
     # 設定スナップショット保存
@@ -298,7 +196,7 @@ def _cmd_generate_samples(config_path: str) -> None:
     save_effective_config(config, out_dir / "effective_config.yaml")
 
     # WRIMEデータ読み込み
-    splits, _ = build_phase0_splits(config.data)
+    splits, _ = build_wrime_splits(config.data)
 
     # パイプライン実行
     pipeline = GenerationPipeline(config)
@@ -315,10 +213,8 @@ def _cmd_list_speakers(config_path: str) -> None:
     from emotionbridge.tts.voicevox_client import VoicevoxClient
 
     config = load_config(config_path)
-    if not isinstance(config, Phase1Config):
-        msg = (
-            f"Expected Phase1Config but got {type(config).__name__}. Check config file."
-        )
+    if not isinstance(config, AudioGenConfig):
+        msg = f"Expected AudioGenConfig but got {type(config).__name__}. Check config file."
         raise SystemExit(msg)
 
     async def _run() -> None:
@@ -344,84 +240,6 @@ def _cmd_list_speakers(config_path: str) -> None:
             for style in talk_styles:
                 print(f"    - {style.name} (ID: {style.id})")
             print()
-
-    asyncio.run(_run())
-
-
-def _cmd_synthesize(
-    config_path: str,
-    text: str,
-    output: str,
-    speaker_id: int | None,
-    mapping_space: str,
-) -> None:
-    from emotionbridge.inference.axes import emotion8d_to_av
-    from emotionbridge.tts.adapter import VoicevoxAdapter
-    from emotionbridge.tts.heuristic_mapper import heuristic_map, heuristic_map_from_av
-    from emotionbridge.tts.voicevox_client import VoicevoxClient
-
-    config = load_config(config_path)
-    if not isinstance(config, Phase1Config):
-        msg = (
-            f"Expected Phase1Config but got {type(config).__name__}. Check config file."
-        )
-        raise SystemExit(msg)
-
-    # 感情エンコード
-    encoder = EmotionEncoder(config.phase0_checkpoint, device=config.device)
-    if encoder.is_classifier:
-        msg = (
-            "synthesize は8D回帰チェックポイントを前提としたヒューリスティック実装です。"
-            "分類器チェックポイントでは利用できません。"
-        )
-        raise SystemExit(msg)
-
-    emotion_vec = encoder.encode(text)
-    av = emotion8d_to_av(emotion_vec)
-
-    # ヒューリスティックマッピング
-    if mapping_space == "av2d":
-        control = heuristic_map_from_av(arousal=float(av[0]), valence=float(av[1]))
-    else:
-        control = heuristic_map(emotion_vec)
-
-    # 感情情報を表示
-    from emotionbridge.constants import EMOTION_LABELS
-
-    emotion_dict = {
-        label: float(f"{v:.3f}")
-        for label, v in zip(EMOTION_LABELS, emotion_vec, strict=False)
-    }
-    print(f"感情ベクトル: {json.dumps(emotion_dict, ensure_ascii=False)}")
-    print(f"連続軸: arousal={av[0]:.3f}, valence={av[1]:.3f}")
-    print(f"マッピング空間: {mapping_space}")
-    print(
-        f"制御ベクトル: pitch_shift={control.pitch_shift:.3f}, "
-        f"pitch_range={control.pitch_range:.3f}, speed={control.speed:.3f}, "
-        f"energy={control.energy:.3f}, pause_weight={control.pause_weight:.3f}",
-    )
-
-    # 音声合成
-    spk_id = (
-        speaker_id if speaker_id is not None else config.voicevox.default_speaker_id
-    )
-    adapter = VoicevoxAdapter(config.control_space)
-
-    async def _run() -> None:
-        async with VoicevoxClient(
-            base_url=config.voicevox.base_url,
-            timeout=config.voicevox.timeout,
-            max_retries=config.voicevox.max_retries,
-            retry_delay=config.voicevox.retry_delay,
-        ) as client:
-            query = await client.audio_query(text, spk_id)
-            modified = adapter.apply(query, control)
-            wav_data = await client.synthesis(modified, spk_id)
-
-        out_path = Path(output)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(wav_data)
-        print(f"音声を保存しました: {out_path} ({len(wav_data)} bytes)")
 
     asyncio.run(_run())
 
@@ -486,22 +304,13 @@ def main() -> None:
         _cmd_analyze_data(args.config, args.output_dir)
         return
     if args.command == "encode":
-        _cmd_encode(args.checkpoint, args.text, args.device, args.output_format)
+        _cmd_encode(args.checkpoint, args.text, args.device)
         return
     if args.command == "generate-samples":
         _cmd_generate_samples(args.config)
         return
     if args.command == "list-speakers":
         _cmd_list_speakers(args.config)
-        return
-    if args.command == "synthesize":
-        _cmd_synthesize(
-            args.config,
-            args.text,
-            args.output,
-            args.speaker_id,
-            args.mapping_space,
-        )
         return
     if args.command == "bridge":
         _cmd_bridge(

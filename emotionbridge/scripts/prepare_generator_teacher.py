@@ -20,21 +20,21 @@ if TYPE_CHECKING:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Phase3bの教師表（感情6D→制御5D）を固定出力する",
+        description="パラメータ生成器の教師表（感情6D→制御5D）を固定出力する",
     )
     parser.add_argument(
         "--recommended-params",
-        default="artifacts/phase3/v03/recommended_params.json",
-        help="Phase3aで生成したrecommended_params.json",
+        default="artifacts/prosody/v03/recommended_params.json",
+        help="韻律特徴ワークフローで生成したrecommended_params.json",
     )
     parser.add_argument(
         "--matches",
-        default="artifacts/phase3/v03/emotion_param_matches.parquet",
+        default="artifacts/prosody/v03/emotion_param_matches.parquet",
         help="近傍サンプル（k件）を保持するParquet。存在すれば統計を付加",
     )
     parser.add_argument(
         "--output-dir",
-        default="artifacts/phase3b/teacher_table",
+        default="artifacts/generator/teacher_table",
         help="教師表の出力先ディレクトリ",
     )
     return parser

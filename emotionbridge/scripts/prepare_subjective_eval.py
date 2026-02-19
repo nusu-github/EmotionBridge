@@ -27,16 +27,16 @@ def _configure_logging() -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Phase3d パイロット主観評価用の音声刺激と評価シートを生成する",
+        description="パイロット主観評価用の音声刺激と評価シートを生成する",
     )
     parser.add_argument(
         "--dataset-path",
-        default="artifacts/phase1_multistyle_smoke/dataset/triplet_dataset.parquet",
-        help="テキスト候補を読むPhase1データセットparquet",
+        default="artifacts/audio_gen_multistyle_smoke/dataset/triplet_dataset.parquet",
+        help="テキスト候補を読むデータセットparquet",
     )
     parser.add_argument(
         "--output-dir",
-        default="artifacts/phase3/subjective_eval/pilot",
+        default="artifacts/prosody/subjective_eval/pilot",
         help="主観評価成果物の出力先",
     )
     parser.add_argument(
@@ -46,18 +46,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--classifier-checkpoint",
-        default="artifacts/phase0_v2/checkpoints/best_model.pt",
+        default="artifacts/classifier/checkpoints/best_model.pt",
         help="分類器チェックポイント",
     )
     parser.add_argument(
         "--generator-checkpoint",
-        default="artifacts/phase3b/checkpoints/best_generator.pt",
+        default="artifacts/generator/checkpoints/best_generator.pt",
         help="生成器チェックポイント",
     )
     parser.add_argument(
         "--style-mapping",
-        default="artifacts/phase3/style_mapping.json",
-        help="Phase3cで構築したstyle_mapping.json",
+        default="artifacts/prosody/style_mapping.json",
+        help="スタイルマッピングJSON",
     )
     parser.add_argument(
         "--voicevox-url",

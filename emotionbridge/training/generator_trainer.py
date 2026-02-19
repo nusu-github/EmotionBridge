@@ -20,7 +20,9 @@ from emotionbridge.model import DeterministicMixer, ParameterGenerator
 
 @dataclass(slots=True)
 class GeneratorDataConfig:
-    teacher_table_path: str = "artifacts/phase3b/teacher_table/recommended_params.json"
+    teacher_table_path: str = (
+        "artifacts/generator/teacher_table/recommended_params.json"
+    )
     strategy: str = "lookup_table_dirichlet"
     samples_per_emotion: int = 300
     dirichlet_alpha_dominant: float = 10.0
@@ -37,7 +39,7 @@ class GeneratorModelConfig:
 
 @dataclass(slots=True)
 class GeneratorTrainConfig:
-    output_dir: str = "artifacts/phase3b"
+    output_dir: str = "artifacts/generator"
     batch_size: int = 32
     num_epochs: int = 500
     lr: float = 1e-3
@@ -54,7 +56,7 @@ class GeneratorEvalConfig:
 
 
 @dataclass(slots=True)
-class Phase3bConfig:
+class GeneratorConfig:
     data: GeneratorDataConfig = field(default_factory=GeneratorDataConfig)
     model: GeneratorModelConfig = field(default_factory=GeneratorModelConfig)
     train: GeneratorTrainConfig = field(default_factory=GeneratorTrainConfig)
@@ -69,7 +71,7 @@ def _build_section(section_type: type, payload: dict[str, Any] | None):
     return section_type(**payload)
 
 
-def load_phase3b_config(config_path: str | Path) -> Phase3bConfig:
+def load_generator_config(config_path: str | Path) -> GeneratorConfig:
     path = Path(config_path)
     if not path.exists():
         msg = f"Config file not found: {path}"
@@ -78,7 +80,7 @@ def load_phase3b_config(config_path: str | Path) -> Phase3bConfig:
     with path.open("r", encoding="utf-8") as file:
         raw = yaml.safe_load(file) or {}
 
-    config = Phase3bConfig(
+    config = GeneratorConfig(
         data=_build_section(GeneratorDataConfig, raw.get("data")),
         model=_build_section(GeneratorModelConfig, raw.get("model")),
         train=_build_section(GeneratorTrainConfig, raw.get("train")),
@@ -97,7 +99,7 @@ def load_phase3b_config(config_path: str | Path) -> Phase3bConfig:
 
 
 def save_effective_generator_config(
-    config: Phase3bConfig,
+    config: GeneratorConfig,
     output_path: str | Path,
 ) -> None:
     path = Path(output_path)
@@ -233,7 +235,7 @@ def _run_eval(
 
 
 def _train_deterministic(
-    config: Phase3bConfig,
+    config: GeneratorConfig,
     recommended_matrix: np.ndarray,
     output_dir: Path,
 ) -> dict[str, Any]:
@@ -323,8 +325,8 @@ def _train_deterministic(
     }
 
 
-def train_phase3b_generator(config: Phase3bConfig) -> dict[str, Any]:
-    """Phase 3b ジェネレータの学習エントリポイント。
+def train_generator(config: GeneratorConfig) -> dict[str, Any]:
+    """パラメータ生成器の学習エントリポイント。
 
     config.data.strategy に応じて処理を分岐する:
     - "deterministic": 教師表から DeterministicMixer を直接構築（学習ループなし）

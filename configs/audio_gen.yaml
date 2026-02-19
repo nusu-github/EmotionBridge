@@ -1,4 +1,4 @@
-phase0_checkpoint: artifacts/phase0/checkpoints/best_model.pt
+classifier_checkpoint: artifacts/classifier/checkpoints/best_model.pt
 device: cuda
 
 data:
@@ -12,8 +12,7 @@ data:
 voicevox:
   host: 127.0.0.1
   port: 50021
-  default_speaker_id: 3
-  speaker_ids: [3, 1, 7, 5]
+  default_speaker_id: 0
   timeout: 30.0
   max_retries: 3
   retry_delay: 0.5
@@ -30,15 +29,13 @@ control_space:
 
 grid:
   strategy: lhs
-  lhs_samples_per_text: 2
+  lhs_samples_per_text: 128
   random_seed: 42
 
 text_selection:
-  texts_per_emotion: 1
-  intensity_bins: 2
-  min_text_length: 5
-  max_text_length: 120
-  random_seed: 42
+  num_texts: 200
+  texts_per_emotion: 25
+  intensity_bins: 3
 
 validation:
   min_file_size_bytes: 1024
@@ -46,7 +43,7 @@ validation:
   min_rms_amplitude: 0.001
 
 generation:
-  output_dir: artifacts/phase1_multistyle_smoke
-  max_concurrent_requests: 3
-  checkpoint_interval: 20
+  output_dir: artifacts/audio_gen
+  max_concurrent_requests: 4
+  checkpoint_interval: 100
   skip_existing: true

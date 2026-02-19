@@ -13,15 +13,15 @@ import yaml
 class PathsConfig:
     jvnv_root: str = "data/jvnv_v1"
     jvnv_nv_label_dir: str = "data/jvnv_v1/nv_label"
-    jvnv_processed_audio_dir: str = "artifacts/phase3/v01/jvnv_processed_audio"
-    phase1_dataset_path: str = "artifacts/phase1/dataset/triplet_dataset.parquet"
-    phase1_output_dir: str = "artifacts/phase1"
-    output_root: str = "artifacts/phase3"
+    jvnv_processed_audio_dir: str = "artifacts/prosody/v01/jvnv_processed_audio"
+    triplet_dataset_path: str = "artifacts/audio_gen/dataset/triplet_dataset.parquet"
+    audio_gen_output_dir: str = "artifacts/audio_gen"
+    output_root: str = "artifacts/prosody"
 
 
 @dataclass(slots=True)
 class V01Config:
-    output_dir: str = "artifacts/phase3/v01"
+    output_dir: str = "artifacts/prosody/v01"
     overwrite_existing_nv_masked: bool = False
     equalize_speaker_stats: bool = True
     random_seed: int = 42
@@ -31,7 +31,7 @@ class V01Config:
 
 @dataclass(slots=True)
 class V02Config:
-    output_dir: str = "artifacts/phase3/v02"
+    output_dir: str = "artifacts/prosody/v02"
     speaker_mode: str = "style_id"
     random_seed: int = 42
     tsne_perplexities: list[float] = field(default_factory=lambda: [10.0, 30.0, 50.0])
@@ -39,7 +39,7 @@ class V02Config:
 
 @dataclass(slots=True)
 class V03Config:
-    output_dir: str = "artifacts/phase3/v03"
+    output_dir: str = "artifacts/prosody/v03"
     emotion_labels_common6: list[str] = field(
         default_factory=lambda: [
             "anger",

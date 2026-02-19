@@ -29,48 +29,6 @@ class ModelConfig:
 
 
 @dataclass(slots=True)
-class TrainConfig:
-    output_dir: str = "artifacts/phase0"
-    batch_size: int = 32
-    num_epochs: int = 10
-    bert_lr: float = 2e-5
-    head_lr: float = 1e-3
-    weight_decay: float = 0.01
-    warmup_ratio: float = 0.1
-    early_stopping_patience: int = 3
-    device: str = "cuda"
-    num_workers: int = 2
-    pin_memory: bool = True
-    log_every_steps: int = 50
-    gradient_accumulation_steps: int = 1
-    mixed_precision: str = "no"
-    emotion_weight_mode: str = "inverse_mean"
-    emotion_weight_epsilon: float = 1e-4
-    emotion_weight_normalize: bool = True
-    emotion_weights: list[float] | None = None
-
-
-@dataclass(slots=True)
-class EvalConfig:
-    go_macro_mse_max: float = 0.05
-    go_top6_min_pearson: float = 0.5
-    go_anger_trust_min_pearson: float = 0.3
-    go_top1_acc_min: float = 0.6
-    go_min_pearson: float | None = None
-
-
-@dataclass(slots=True)
-class Phase0Config:
-    data: DataConfig = field(default_factory=DataConfig)
-    model: ModelConfig = field(default_factory=ModelConfig)
-    train: TrainConfig = field(default_factory=TrainConfig)
-    eval: EvalConfig = field(default_factory=EvalConfig)
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass(slots=True)
 class ClassifierDataConfig(DataConfig):
     label_conversion: str = "argmax"
     soft_label_temperature: float = 1.0
@@ -84,7 +42,7 @@ class ClassifierModelConfig(ModelConfig):
 
 @dataclass(slots=True)
 class ClassifierTrainConfig:
-    output_dir: str = "artifacts/phase0_v2"
+    output_dir: str = "artifacts/classifier"
     batch_size: int = 32
     num_epochs: int = 10
     bert_lr: float = 2e-5
@@ -113,7 +71,7 @@ class ClassifierEvalConfig:
 
 
 @dataclass(slots=True)
-class Phase0ClassifierConfig:
+class ClassifierConfig:
     data: ClassifierDataConfig = field(default_factory=ClassifierDataConfig)
     model: ClassifierModelConfig = field(default_factory=ClassifierModelConfig)
     train: ClassifierTrainConfig = field(default_factory=ClassifierTrainConfig)
@@ -123,7 +81,7 @@ class Phase0ClassifierConfig:
         return asdict(self)
 
 
-# --- Phase 1 設定 ---
+# --- 音声サンプル生成設定 ---
 
 
 @dataclass(slots=True)
@@ -197,7 +155,7 @@ class ValidationConfig:
 class GenerationConfig:
     """音声生成パイプライン設定。"""
 
-    output_dir: str = "artifacts/phase1"
+    output_dir: str = "artifacts/audio_gen"
     audio_subdir: str = "audio"
     max_concurrent_requests: int = 4
     checkpoint_interval: int = 100
@@ -205,10 +163,10 @@ class GenerationConfig:
 
 
 @dataclass(slots=True)
-class Phase1Config:
-    """Phase 1全体の設定。"""
+class AudioGenConfig:
+    """音声サンプル生成パイプラインの設定。"""
 
-    phase0_checkpoint: str = "artifacts/phase0/checkpoints/best_model.pt"
+    classifier_checkpoint: str = "artifacts/classifier/checkpoints/best_model.pt"
     device: str = "cuda"
     voicevox: VoicevoxConfig = field(default_factory=VoicevoxConfig)
     control_space: ControlSpaceConfig = field(default_factory=ControlSpaceConfig)
@@ -240,12 +198,11 @@ def _build_section(section_type: type, payload: dict[str, Any] | None):
 
 def load_config(
     config_path: str | Path,
-) -> Phase0Config | Phase0ClassifierConfig | Phase1Config:
+) -> ClassifierConfig | AudioGenConfig:
     """YAML設定ファイルを読み込む。
 
-    - 'voicevox' キーが存在すれば Phase1Config
-    - model.num_classes / data.label_conversion などがあれば Phase0ClassifierConfig
-    - それ以外は Phase0Config
+    - 'voicevox' キーが存在すれば AudioGenConfig
+    - それ以外は ClassifierConfig
     """
     path = Path(config_path)
     if not path.exists():
@@ -256,10 +213,10 @@ def load_config(
         raw = yaml.safe_load(file) or {}
 
     if "voicevox" in raw:
-        return Phase1Config(
-            phase0_checkpoint=raw.get(
-                "phase0_checkpoint",
-                "artifacts/phase0/checkpoints/best_model.pt",
+        return AudioGenConfig(
+            classifier_checkpoint=raw.get(
+                "classifier_checkpoint",
+                "artifacts/classifier/checkpoints/best_model.pt",
             ),
             device=raw.get("device", "cuda"),
             voicevox=_build_section(VoicevoxConfig, raw.get("voicevox")),
@@ -282,23 +239,22 @@ def load_config(
         or "label_conversion" in data_raw
         or "class_weight_mode" in train_raw
     ):
-        return Phase0ClassifierConfig(
+        return ClassifierConfig(
             data=_build_section(ClassifierDataConfig, data_raw),
             model=_build_section(ClassifierModelConfig, model_raw),
             train=_build_section(ClassifierTrainConfig, train_raw),
             eval=_build_section(ClassifierEvalConfig, raw.get("eval")),
         )
 
-    return Phase0Config(
-        data=_build_section(DataConfig, raw.get("data")),
-        model=_build_section(ModelConfig, raw.get("model")),
-        train=_build_section(TrainConfig, raw.get("train")),
-        eval=_build_section(EvalConfig, raw.get("eval")),
+    msg = (
+        "Unknown config format. Expected AudioGenConfig (voicevox key) "
+        "or ClassifierConfig (num_classes/label_conversion/class_weight_mode key)."
     )
+    raise ValueError(msg)
 
 
 def save_effective_config(
-    config: Phase0Config | Phase0ClassifierConfig | Phase1Config,
+    config: ClassifierConfig | AudioGenConfig,
     output_path: str | Path,
 ) -> None:
     path = Path(output_path)

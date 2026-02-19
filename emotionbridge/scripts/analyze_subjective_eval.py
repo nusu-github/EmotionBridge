@@ -16,7 +16,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--eval-dir",
-        default="artifacts/phase3/subjective_eval/pilot",
+        default="artifacts/prosody/subjective_eval/pilot",
         help="prepare_subjective_eval.py の出力ディレクトリ",
     )
     parser.add_argument(

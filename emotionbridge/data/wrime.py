@@ -124,7 +124,7 @@ def _safe_split(
         return np.asarray(train_idx), np.asarray(test_idx), False
 
 
-def build_phase0_splits(
+def build_wrime_splits(
     data_config: DataConfig,
 ) -> tuple[dict[str, PreparedSplit], dict[str, Any]]:
     if not np.isclose(

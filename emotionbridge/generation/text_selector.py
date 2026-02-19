@@ -33,7 +33,7 @@ class SelectedText:
 class TextSelector:
     """WRIMEデータセットから学習用テキストを選定する。
 
-    build_phase0_splits() の全splitからテキストをプールし、
+    build_wrime_splits() の全splitからテキストをプールし、
     dominant emotion (argmax) でグループ化して各グループから
     texts_per_emotion 件を均等サンプリングする。
     """
@@ -59,7 +59,7 @@ class TextSelector:
         5. text_id を0始まりの連番で付与
 
         Args:
-            splits: build_phase0_splits() の出力。
+            splits: build_wrime_splits() の出力。
 
         Returns:
             選定されたテキストのリスト。

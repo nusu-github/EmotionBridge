@@ -1,10 +1,10 @@
 paths:
   jvnv_root: data/jvnv_v1
   jvnv_nv_label_dir: data/jvnv_v1/nv_label
-  jvnv_processed_audio_dir: artifacts/phase3/v01/jvnv_processed_audio
-  phase1_dataset_path: artifacts/phase1_multistyle_smoke/dataset/triplet_dataset.parquet
-  phase1_output_dir: artifacts/phase1_multistyle_smoke
-  output_root: artifacts/phase3
+  jvnv_processed_audio_dir: artifacts/prosody/v01/jvnv_processed_audio
+  triplet_dataset_path: artifacts/audio_gen_multistyle_smoke/dataset/triplet_dataset.parquet
+  audio_gen_output_dir: artifacts/audio_gen_multistyle_smoke
+  output_root: artifacts/prosody
 
 extraction:
   feature_set: eGeMAPSv02
@@ -15,20 +15,20 @@ evaluation:
   tsne_visual_separation_min_emotions: 4
 
 v01:
-  output_dir: artifacts/phase3/v01
+  output_dir: artifacts/prosody/v01
   overwrite_existing_nv_masked: false
   equalize_speaker_stats: true
   random_seed: 42
   tsne_perplexities: [10.0, 30.0, 50.0]
 
 v02:
-  output_dir: artifacts/phase3/v02_multistyle_smoke
+  output_dir: artifacts/prosody/v02_multistyle_smoke
   speaker_mode: style_id
   random_seed: 42
   tsne_perplexities: [10.0, 30.0, 50.0]
 
 v03:
-  output_dir: artifacts/phase3/v03_multistyle_smoke
+  output_dir: artifacts/prosody/v03_multistyle_smoke
   emotion_labels_common6: [anger, disgust, fear, happy, sad, surprise]
   nearest_k: 25
   random_seed: 42

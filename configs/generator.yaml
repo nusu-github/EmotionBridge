@@ -1,5 +1,5 @@
 data:
-  teacher_table_path: artifacts/phase3b/teacher_table/recommended_params.json
+  teacher_table_path: artifacts/generator/teacher_table/recommended_params.json
   strategy: deterministic
   samples_per_emotion: 300
   dirichlet_alpha_dominant: 10.0
@@ -12,7 +12,7 @@ model:
   dropout: 0.3
 
 train:
-  output_dir: artifacts/phase3b
+  output_dir: artifacts/generator
   batch_size: 32
   num_epochs: 500
   lr: 0.001

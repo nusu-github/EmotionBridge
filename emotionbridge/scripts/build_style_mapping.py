@@ -49,7 +49,7 @@ def _configure_logging() -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Phase3c: スタイル重心と感情重心の距離行列からスタイルマッピングを構築する",
+        description="スタイル重心と感情重心の距離行列からスタイルマッピングを構築する",
     )
     parser.add_argument(
         "--config",
