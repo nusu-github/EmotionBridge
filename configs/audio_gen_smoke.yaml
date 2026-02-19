@@ -1,13 +1,5 @@
-classifier_checkpoint: artifacts/phase0_v2/checkpoints/best_model
+classifier_checkpoint: artifacts/classifier/checkpoints/best_model
 device: cuda
-
-data:
-  dataset_name: shunk031/wrime
-  dataset_config_name: ver1
-  text_field: sentence
-  label_source: avg_readers
-  filter_max_intensity_lte: 1
-  random_seed: 42
 
 voicevox:
   host: 127.0.0.1
@@ -33,6 +25,7 @@ grid:
   random_seed: 42
 
 text_selection:
+  jvnv_transcription_path: data/jvnv_v1/transcription.csv
   texts_per_emotion: 1
   intensity_bins: 2
   min_text_length: 5

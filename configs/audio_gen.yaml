@@ -1,19 +1,11 @@
-classifier_checkpoint: artifacts/phase0_v2/checkpoints/best_model
+classifier_checkpoint: artifacts/classifier/checkpoints/best_model
 device: cuda
-
-data:
-  dataset_name: shunk031/wrime
-  dataset_config_name: ver1
-  text_field: sentence
-  label_source: avg_readers
-  filter_max_intensity_lte: 1
-  random_seed: 42
 
 voicevox:
   host: 127.0.0.1
   port: 50021
   default_speaker_id: 3
-  speaker_ids: [3, 1, 7, 5, 22, 38, 75, 76]
+  speaker_ids: [3, 1, 7, 5, 76]
   timeout: 30.0
   max_retries: 3
   retry_delay: 0.5
@@ -34,6 +26,7 @@ grid:
   random_seed: 42
 
 text_selection:
+  jvnv_transcription_path: data/jvnv_v1/transcription.csv
   num_texts: 200
   texts_per_emotion: 25
   intensity_bins: 3

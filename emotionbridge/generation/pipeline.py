@@ -15,7 +15,6 @@ from pathlib import Path
 import numpy as np
 
 from emotionbridge.config import AudioGenConfig
-from emotionbridge.data.wrime import PreparedSplit
 from emotionbridge.generation.dataset import (
     TripletRecord,
     save_dataset,
@@ -23,9 +22,8 @@ from emotionbridge.generation.dataset import (
 )
 from emotionbridge.generation.grid import GridSampler
 from emotionbridge.generation.report import GenerationReport
-from emotionbridge.generation.text_selector import TextSelector
+from emotionbridge.generation.text_selector import SelectedText
 from emotionbridge.generation.validator import AudioValidator
-from emotionbridge.inference.encoder import EmotionEncoder
 from emotionbridge.tts.adapter import VoicevoxAdapter
 from emotionbridge.tts.types import AudioQuery, ControlVector
 from emotionbridge.tts.voicevox_client import VoicevoxClient
@@ -67,12 +65,7 @@ class GenerationPipeline:
 
     def __init__(self, config: AudioGenConfig) -> None:
         self._config = config
-        self._encoder = EmotionEncoder(
-            checkpoint_path=config.classifier_checkpoint,
-            device=config.device,
-        )
         self._sampler = GridSampler(config.grid)
-        self._selector = TextSelector(config.text_selection, self._encoder)
         self._validator = AudioValidator(config.validation)
         self._client = VoicevoxClient(
             base_url=config.voicevox.base_url,
@@ -91,18 +84,17 @@ class GenerationPipeline:
             return list(dict.fromkeys(int(style_id) for style_id in configured))
         return [int(self._config.voicevox.default_speaker_id)]
 
-    async def run(self, splits: dict[str, PreparedSplit]) -> GenerationReport:
+    async def run(self, selected_texts: list[SelectedText]) -> GenerationReport:
         """パイプライン全体を実行する。
 
-        1. テキスト選定 (TextSelector)
-        2. パラメータグリッド生成 (GridSampler)
-        3. 非同期バッチ音声合成 (VoicevoxClient + VoicevoxAdapter)
-        4. 品質チェック (AudioValidator)
-        5. データセット書き出し (dataset.py)
-        6. レポート生成
+        1. パラメータグリッド生成 (GridSampler)
+        2. 非同期バッチ音声合成 (VoicevoxClient + VoicevoxAdapter)
+        3. 品質チェック (AudioValidator)
+        4. データセット書き出し (dataset.py)
+        5. レポート生成
 
         Args:
-            splits: build_wrime_splits() の出力。
+            selected_texts: 選定済みテキストのリスト。
 
         Returns:
             GenerationReport。
@@ -110,11 +102,7 @@ class GenerationPipeline:
         """
         start_time = time.monotonic()
 
-        # 1. テキスト選定
-        logger.info("テキスト選定を開始...")
-        selected_texts = self._selector.select(splits)
-
-        # 2. タスク生成
+        # 1. タスク生成
         logger.info("生成タスクを構築中...")
         completed_ids = self._load_checkpoint()
         style_ids = self._style_ids()
@@ -458,16 +446,16 @@ class GenerationPipeline:
         """感情ベクトルからdominant emotionを取得する。
 
         Args:
-            emotion_vec: shape (8,) の感情ベクトル。
+            emotion_vec: shape (6,) の感情ベクトル。
 
         Returns:
             dominant emotionのラベル。
 
         """
-        from emotionbridge.constants import EMOTION_LABELS
+        from emotionbridge.constants import JVNV_EMOTION_LABELS
 
         dominant_idx = int(np.argmax(emotion_vec))
-        return EMOTION_LABELS[dominant_idx]
+        return JVNV_EMOTION_LABELS[dominant_idx]
 
     @staticmethod
     def _extract_voicevox_params(audio_query: AudioQuery) -> dict[str, float]:

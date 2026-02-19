@@ -2,7 +2,7 @@
 
 TripletRecord のリストを Apache Parquet 形式で書き出し・読み込みする。
 列名規則:
-- emotion_*: 感情エンコーダ出力 (8列)
+- emotion_*: 感情エンコーダ出力 (6列, JVNV感情ラベル)
 - ctrl_*: 制御空間パラメータ (5列, [-1, +1])
 - vv_*: VOICEVOX AudioQueryに適用された実値
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from emotionbridge.constants import CONTROL_PARAM_NAMES, EMOTION_LABELS
+from emotionbridge.constants import CONTROL_PARAM_NAMES, JVNV_EMOTION_LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class TripletRecord:
 
     text_id: int
     text: str
-    emotion_vec: list[float]  # len=8
+    emotion_vec: list[float]  # len=6
     dominant_emotion: str
     control_params: list[float]  # len=5
     audio_path: str
@@ -45,7 +45,7 @@ _PARQUET_SCHEMA = pa.schema(
         pa.field("text_id", pa.int32()),
         pa.field("text", pa.string()),
     ]
-    + [pa.field(f"emotion_{label}", pa.float32()) for label in EMOTION_LABELS]
+    + [pa.field(f"emotion_{label}", pa.float32()) for label in JVNV_EMOTION_LABELS]
     + [
         pa.field("dominant_emotion", pa.string()),
     ]
@@ -94,7 +94,7 @@ def save_dataset(records: list[TripletRecord], output_path: Path) -> None:
         "text_id": [],
         "text": [],
     }
-    for label in EMOTION_LABELS:
+    for label in JVNV_EMOTION_LABELS:
         columns[f"emotion_{label}"] = []
     columns["dominant_emotion"] = []
     for name in CONTROL_PARAM_NAMES:
@@ -113,7 +113,7 @@ def save_dataset(records: list[TripletRecord], output_path: Path) -> None:
         columns["text_id"].append(rec.text_id)
         columns["text"].append(rec.text)
 
-        for i, label in enumerate(EMOTION_LABELS):
+        for i, label in enumerate(JVNV_EMOTION_LABELS):
             columns[f"emotion_{label}"].append(rec.emotion_vec[i])
 
         columns["dominant_emotion"].append(rec.dominant_emotion)
@@ -160,7 +160,7 @@ def load_dataset(path: Path) -> list[TripletRecord]:
     records: list[TripletRecord] = []
 
     for i in range(n_rows):
-        emotion_vec = [float(columns[f"emotion_{label}"][i]) for label in EMOTION_LABELS]
+        emotion_vec = [float(columns[f"emotion_{label}"][i]) for label in JVNV_EMOTION_LABELS]
         control_params = [float(columns[f"ctrl_{name}"][i]) for name in CONTROL_PARAM_NAMES]
         voicevox_params: dict[str, float] = {}
         for key in _VV_PARAM_KEYS:

@@ -133,6 +133,7 @@ class GridConfig:
 class TextSelectionConfig:
     """テキスト選定設定。"""
 
+    jvnv_transcription_path: str = "data/jvnv_v1/transcription.csv"
     num_texts: int = 200
     texts_per_emotion: int = 25
     intensity_bins: int = 3
@@ -174,7 +175,6 @@ class AudioGenConfig:
     text_selection: TextSelectionConfig = field(default_factory=TextSelectionConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
-    data: DataConfig = field(default_factory=DataConfig)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -228,7 +228,6 @@ def load_config(
             ),
             validation=_build_section(ValidationConfig, raw.get("validation")),
             generation=_build_section(GenerationConfig, raw.get("generation")),
-            data=_build_section(DataConfig, raw.get("data")),
         )
 
     model_raw = raw.get("model") or {}

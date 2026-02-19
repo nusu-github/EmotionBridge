@@ -60,11 +60,11 @@ class DeterministicMixer(nn.Module):
         self.tanh = nn.Tanh()
 
     @classmethod
-    def from_numpy(cls, matrix: np.ndarray) -> DeterministicMixer:
+    def from_numpy(cls, matrix: np.ndarray) -> "DeterministicMixer":
         return cls(torch.tensor(matrix, dtype=torch.float32))
 
     @classmethod
-    def from_json(cls, path: str | Path) -> DeterministicMixer:
+    def from_json(cls, path: str | Path) -> "DeterministicMixer":
         """教師表JSON（recommended_params.json形式）からロードする。"""
         with Path(path).open("r", encoding="utf-8") as f:
             payload = json.load(f)

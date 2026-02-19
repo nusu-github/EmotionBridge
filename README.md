@@ -235,5 +235,5 @@ docs/                       # 設計書・USDM仕様書
 - **VOICEVOX Engine / キャラクター音声**: [VOICEVOX 利用規約](https://voicevox.hiroshiba.jp/)（ずんだもんの音声は「VOICEVOX:ずんだもん」のクレジット表記により商用・非商用利用可能）
 - **WRIME データセット**: [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/)（非商用・改変不可）
 - **JVNV コーパス**: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
-- **tohoku-nlp/bert-base-japanese**: [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)
+- **sbintuitions/modernbert-ja-70m**: [MIT](https://choosealicense.com/licenses/mit/)
 - **openSMILE (eGeMAPS)**: 研究・教育用途はオープンソース。商用利用には [audEERING 商用ライセンス](https://www.audeering.com/) が必要

@@ -12,7 +12,6 @@ from emotionbridge.config import (
 from emotionbridge.data import (
     build_classifier_data_report,
     build_classifier_splits,
-    build_wrime_splits,
 )
 from emotionbridge.inference import EmotionEncoder
 from emotionbridge.training import train_classifier
@@ -177,6 +176,7 @@ def _cmd_encode(checkpoint: str, text: str, device: str) -> None:
 def _cmd_generate_samples(config_path: str) -> None:
     from emotionbridge.config import save_effective_config
     from emotionbridge.generation.pipeline import GenerationPipeline
+    from emotionbridge.generation.text_selector import load_jvnv_texts
 
     config = load_config(config_path)
     if not isinstance(config, AudioGenConfig):
@@ -188,15 +188,18 @@ def _cmd_generate_samples(config_path: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     save_effective_config(config, out_dir / "effective_config.yaml")
 
-    # WRIMEデータ読み込み
-    splits, _ = build_wrime_splits(config.data)
+    # JVNVテキスト読み込み
+    encoder = EmotionEncoder(config.classifier_checkpoint, device=config.device)
+    selected_texts = load_jvnv_texts(
+        config.text_selection.jvnv_transcription_path, encoder, config.text_selection
+    )
 
     # パイプライン実行
     pipeline = GenerationPipeline(config)
 
     async def _run() -> None:
         async with pipeline._client:
-            report = await pipeline.run(splits)
+            report = await pipeline.run(selected_texts)
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
 
     asyncio.run(_run())
