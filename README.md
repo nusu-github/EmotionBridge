@@ -1,141 +1,166 @@
 # EmotionBridge
 
-Phase 0「テキスト感情エンコーダ」の初期実装です。設計書 `EB-P0-BD-001` をベースに、以下を実装しています。
+テキストを入力するだけで、感情表現付きの音声を自動生成する変換エンジン。テキスト感情分類と韻律特徴マッチングに基づき、TTS の制御パラメータを自動決定する。
 
-- WRIME Ver1 の読込・前処理（客観ラベル抽出 / フィルタ / 正規化 / 分割）
-- BERT + 回帰ヘッドによる 8 次元感情ベクトル推定
-- 訓練ループ（感情別重み付きMSE, AdamW, warmup+decay, Early Stopping, checkpoint）
-- 評価指標（MSE, Pearson r, Top-1 Accuracy）と感情グループ別 Go/No-Go 判定
-- 推論 API `EmotionEncoder`（単一 / バッチ）
+## 概要
+
+EmotionBridge は日本語テキストから感情を分類し、その結果に基づいて VOICEVOX TTS の制御パラメータを自動決定して感情音声を合成する。
+
+```text
+テキスト
+  --> Phase 0 感情分類（BERT 6クラス）
+    --> DeterministicMixer（6D --> 5D制御パラメータ）
+      --> VOICEVOX TTS（スタイル選択 + 韻律制御）
+        --> 感情音声
+```
+
+### フェーズ構成
+
+| フェーズ | 内容                                                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Phase 0  | 日本語テキスト感情分類器。BERT + 分類ヘッド、WRIME データセットで学習。6感情クラス（anger, disgust, fear, happy, sad, surprise）           |
+| Phase 1  | VOICEVOX TTS 統合。音声サンプル生成パイプライン。5D制御パラメータ（pitch_shift, pitch_range, speed, energy, pause_weight）                 |
+| Phase 3  | 韻律特徴ワークフロー。JVNV/VOICEVOX の eGeMAPS 抽出・正規化・クロスドメイン整合・マッチングにより教師表を作成し、DeterministicMixer を学習 |
+| Bridge   | 統合推論パイプライン。テキスト入力から感情分類・パラメータ生成・スタイル選択・音声合成までを一括実行                                       |
 
 ## セットアップ
 
 ```bash
+# 依存関係のインストール（uv パッケージマネージャを使用）
 uv sync
 ```
 
-## CLI
-
-### 1) データ分析
+Bridge パイプラインおよび Phase 1 の音声合成には VOICEVOX Engine の起動が必要:
 
 ```bash
-uv run python main.py analyze-data --config configs/phase0.yaml
+# VOICEVOX Engine をデフォルトポート（50021）で起動しておく
+# https://voicevox.hiroshiba.jp/
 ```
 
-### 2) 訓練
+## デモ音声
 
-```bash
-uv run python main.py train --config configs/phase0.yaml
-```
+`demo/` に感情別のサンプル音声を収録している。Bridge パイプラインの出力を確認する場合はこちらを参照。
 
-`Accelerate` を使う場合（推奨）:
+| ファイル     | テキスト                 | 分類結果 | 確信度 | スタイル | 主な制御パラメータ           |
+| ------------ | ------------------------ | -------- | ------ | -------- | ---------------------------- |
+| happy.wav    | 今日は本当に楽しかった！ | happy    | 99.9%  | あまあま | speed+0.28, pitch+0.23       |
+| anger.wav    | もう絶対に許さないからね | anger    | 58.7%  | ノーマル | pitch_range+0.22, pitch-0.20 |
+| sad.wav      | あの人がいなくなって…    | sad      | 99.7%  | セクシー | energy-0.68, speed-0.23      |
+| fear.wav     | 怖い…誰かいるの…？       | fear     | 97.2%  | セクシー | energy-0.51, pause+0.38      |
+| surprise.wav | えっ！？嘘でしょ！？     | surprise | 98.0%  | セクシー | pause+0.39, energy-0.37      |
+| disgust.wav  | あんなことするなんて…    | disgust  | 88.0%  | ノーマル | energy-0.44, pitch-0.28      |
 
-```bash
-uv run accelerate config
-uv run accelerate launch main.py train --config configs/phase0.yaml
-```
+> デモ音声は VOICEVOX:ずんだもん を使用して生成されている。
 
-6クラス分類版（Phase 3a）:
+## クイックスタート
 
-```bash
-uv run python main.py analyze-data --config configs/phase0_classifier.yaml --output-dir artifacts/phase0_v2/reports
-uv run python main.py train --config configs/phase0_classifier.yaml
-```
-
-スモーク実行（軽量）:
-
-```bash
-uv run python main.py analyze-data --config configs/phase0_classifier_smoke.yaml --output-dir artifacts/phase0_v2_smoke/reports
-```
-
-`configs/phase0.yaml` の `train` セクションで以下を調整できます。
-
-- `gradient_accumulation_steps`: 勾配累積ステップ数
-- `mixed_precision`: `"no" | "fp16" | "bf16"`
-- `emotion_weight_mode`: `"inverse_mean" | "none"`
-- `emotion_weight_epsilon`: 逆数計算の下限値（ゼロ割防止）
-- `emotion_weight_normalize`: 重みの平均を 1 に正規化するか
-- `emotion_weights`: 手動重み（指定時は自動重みより優先）
-
-Go/No-Go 判定（`eval` セクション）:
-
-- `go_macro_mse_max`: マクロ MSE の上限（全感情共通）
-- `go_top6_min_pearson`: 上位 6 感情（`joy/sadness/anticipation/surprise/fear/disgust`）の最小 Pearson 下限
-- `go_anger_trust_min_pearson`: `anger/trust` の最小 Pearson 下限
-- `go_top1_acc_min`: Top-1 Accuracy の下限
-
-出力先（既定）:
-
-- `artifacts/phase0/checkpoints/best_model.pt`
-- `artifacts/phase0/reports/data_report.json`
-- `artifacts/phase0/reports/training_history.json`
-- `artifacts/phase0/reports/evaluation.json`
-
-### 3) 推論
-
-```bash
-uv run python main.py encode \
-  --checkpoint artifacts/phase0/checkpoints/best_model.pt \\
-  --text "今日は楽しかった！"
-
-# 連続軸（Arousal/Valence）を直接出力
-uv run python main.py encode \
-  --checkpoint artifacts/phase0/checkpoints/best_model.pt \
-  --text "今日は楽しかった！" \
-  --output-format av2d
-
-# 8D と連続軸を同時出力
-uv run python main.py encode \
-  --checkpoint artifacts/phase0/checkpoints/best_model.pt \
-  --text "今日は楽しかった！" \
-  --output-format both
-```
-
-## Python API
-
-```python
-from emotionbridge import EmotionEncoder
-
-encoder = EmotionEncoder("artifacts/phase0/checkpoints/best_model.pt", device="cuda")
-vec = encoder.encode("今日は楽しかった！")
-av = encoder.encode_av("今日は楽しかった！")
-batch = encoder.encode_batch(["嬉しい", "少し不安"])
-batch_av = encoder.encode_batch_av(["嬉しい", "少し不安"])
-```
-
-出力次元順序は固定で、`[joy, sadness, anticipation, surprise, anger, fear, disgust, trust]` です。
-連続軸は `[arousal, valence]` 順で出力されます。
-
-### 4) Phase 3: 韻律特徴空間検証（V-01 / V-02 / V-03）
-
-実験スクリプトは `emotionbridge/scripts/` 配下に追加しています。
-セットアップと実行順序は以下を参照してください。
-
-V-03 では、`prepare_direct_matching` により感情ごとの推奨5D制御プロファイル
-（韻律特徴空間ベース）を生成できます。
-
-- `configs/experiment_config.yaml`
-- `docs/phase3/prosody_validation_setup.md`
-
-### 5) Phase 3d: 統合推論（bridge）
-
-分類器（6D）→生成器（5D）→スタイル選択→VOICEVOX 合成を一括実行します。
+テキストから感情音声を生成する最短例:
 
 ```bash
 uv run python main.py bridge \
   --text "今日は楽しかった！" \
-  --output bridge.wav \
+  --output output.wav \
+  --character zundamon
+```
+
+感情分類結果、制御パラメータ、選択されたスタイル情報が JSON で出力され、音声ファイルが保存される。
+
+## CLI リファレンス
+
+### Phase 0: テキスト感情分類器
+
+```bash
+# 訓練（6クラス分類版）
+uv run python main.py train --config configs/phase0_classifier.yaml
+
+# 訓練（8D回帰版）
+uv run python main.py train --config configs/phase0.yaml
+
+# Accelerate 使用（推奨）
+uv run accelerate launch main.py train --config configs/phase0.yaml
+
+# データ分析
+uv run python main.py analyze-data --config configs/phase0.yaml
+
+# 推論
+uv run python main.py encode \
+  --checkpoint artifacts/phase0/checkpoints/best_model.pt \
+  --text "今日は楽しかった！"
+```
+
+### Phase 1: VOICEVOX 音声サンプル生成（要 VOICEVOX Engine）
+
+```bash
+# サンプル生成
+uv run python main.py generate-samples --config configs/phase1.yaml
+
+# 利用可能なキャラクター一覧
+uv run python main.py list-speakers
+
+# 単体音声合成（ヒューリスティックマッピング）
+uv run python main.py synthesize --text "嬉しい" --output out.wav
+```
+
+### Phase 3: 韻律特徴パイプライン
+
+実行順序に注意。上から順に実行する。
+
+```bash
+# JVNV データセット準備
+uv run python -m emotionbridge.scripts.prepare_jvnv --config configs/experiment_config.yaml
+
+# eGeMAPS 特徴量抽出
+uv run python -m emotionbridge.scripts.extract_egemaps --config configs/experiment_config.yaml --source jvnv
+uv run python -m emotionbridge.scripts.extract_egemaps --config configs/experiment_config.yaml --source voicevox
+
+# 特徴量正規化
+uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source jvnv
+uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source voicevox
+
+# 特徴応答性評価（feature_weights.json 出力）
+uv run python -m emotionbridge.scripts.evaluate_responsiveness --config configs/experiment_config.yaml
+
+# クロスドメイン整合
+uv run python -m emotionbridge.scripts.align_domains --config configs/experiment_config.yaml
+
+# 感情パラメータマッチング
+uv run python -m emotionbridge.scripts.match_emotion_params --config configs/experiment_config.yaml
+
+# ドメインギャップ評価
+uv run python -m emotionbridge.scripts.evaluate_domain_gap --config configs/experiment_config.yaml
+
+# 教師表作成
+uv run python -m emotionbridge.scripts.prepare_generator_teacher
+
+# Generator 訓練
+uv run python -m emotionbridge.scripts.train_generator --config configs/phase3b.yaml
+```
+
+### Bridge: 統合推論（要 VOICEVOX Engine）
+
+```bash
+uv run python main.py bridge \
+  --text "今日は楽しかった！" \
+  --output output.wav \
   --character zundamon \
   --classifier-checkpoint artifacts/phase0_v2/checkpoints/best_model.pt \
   --generator-checkpoint artifacts/phase3b/checkpoints/best_generator.pt \
   --style-mapping artifacts/phase3/style_mapping.json
 ```
 
-### 6) Phase 3d: 主観評価パイロット（A/B・MOS・感情識別）
+主要オプション:
 
-評価刺激と回答テンプレートを生成:
+| オプション             | 既定値                   | 説明                                                           |
+| ---------------------- | ------------------------ | -------------------------------------------------------------- |
+| `--character`          | `zundamon`               | スタイルマッピング内のキャラクターキー                         |
+| `--fallback-threshold` | `0.3`                    | 感情確信度がこの値未満の場合デフォルトスタイルにフォールバック |
+| `--device`             | `cuda`                   | 推論デバイス（`cuda` または `cpu`）                            |
+| `--voicevox-url`       | `http://127.0.0.1:50021` | VOICEVOX Engine URL                                            |
+
+### 主観評価
 
 ```bash
+# 評価刺激と回答テンプレートを生成
 uv run python -m emotionbridge.scripts.prepare_subjective_eval \
   --dataset-path artifacts/phase1_multistyle_smoke/dataset/triplet_dataset.parquet \
   --output-dir artifacts/phase3/subjective_eval/pilot_v01 \
@@ -143,11 +168,83 @@ uv run python -m emotionbridge.scripts.prepare_subjective_eval \
   --classifier-checkpoint artifacts/phase0_v2/checkpoints/best_model.pt \
   --generator-checkpoint artifacts/phase3b/checkpoints/best_generator.pt \
   --style-mapping artifacts/phase3/style_mapping.json
-```
 
-回答CSVを集計（`responses/*.csv` を配置後）:
-
-```bash
+# 回答CSV集計（responses/*.csv 配置後）
 uv run python -m emotionbridge.scripts.analyze_subjective_eval \
   --eval-dir artifacts/phase3/subjective_eval/pilot_v01
 ```
+
+## Python API
+
+### EmotionEncoder（感情分類 / 回帰）
+
+```python
+from emotionbridge import EmotionEncoder
+
+# 8D回帰版
+encoder = EmotionEncoder("artifacts/phase0/checkpoints/best_model.pt", device="cuda")
+vec = encoder.encode("今日は楽しかった！")          # numpy array (8,)
+batch = encoder.encode_batch(["嬉しい", "少し不安"])  # numpy array (N, 8)
+
+# 6クラス分類版
+classifier = EmotionEncoder("artifacts/phase0_v2/checkpoints/best_model.pt", device="cuda")
+probs = classifier.encode("今日は楽しかった！")  # numpy array (6,)
+```
+
+### Bridge Pipeline（統合推論）
+
+```python
+from emotionbridge.inference import create_pipeline
+
+pipeline = await create_pipeline(
+    classifier_checkpoint="artifacts/phase0_v2/checkpoints/best_model.pt",
+    generator_checkpoint="artifacts/phase3b/checkpoints/best_generator.pt",
+    style_mapping="artifacts/phase3/style_mapping.json",
+    voicevox_url="http://127.0.0.1:50021",
+    character="zundamon",
+    fallback_threshold=0.3,
+    device="cuda",
+)
+
+result = await pipeline.synthesize(
+    text="今日は楽しかった！",
+    output_path="output.wav",
+)
+
+print(result.dominant_emotion)  # "happy"
+print(result.control_params)   # {"pitch_shift": 0.12, ...}
+print(result.style_name)       # "うれしい"
+
+await pipeline.close()
+```
+
+## プロジェクト構成
+
+```text
+emotionbridge/
+├── cli.py                  # メインCLI
+├── config.py               # Phase 0/1 設定
+├── constants.py            # 感情ラベル・制御パラメータ定数
+├── data/                   # WRIME データ処理
+├── model/                  # ParameterGenerator, DeterministicMixer, TextEmotionClassifier, TextEmotionRegressor
+├── training/               # Phase 0 訓練, generator_trainer
+├── inference/              # EmotionEncoder, bridge_pipeline
+├── generation/             # Phase 1 生成パイプライン
+├── tts/                    # VOICEVOX クライアント・アダプタ
+└── scripts/                # Phase 3 スクリプト群
+configs/                    # YAML設定ファイル
+artifacts/                  # 訓練成果物・チェックポイント
+docs/                       # 設計書・USDM仕様書
+```
+
+## ライセンス
+
+本プロジェクトのソースコードのライセンスは未定。
+
+本プロジェクトは以下の外部リソースに依存しており、それぞれ固有のライセンス・利用規約が適用される。利用前に各ライセンスの確認を推奨する。
+
+- **VOICEVOX Engine / キャラクター音声**: [VOICEVOX 利用規約](https://voicevox.hiroshiba.jp/)（ずんだもんの音声は「VOICEVOX:ずんだもん」のクレジット表記により商用・非商用利用可能）
+- **WRIME データセット**: [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/)（非商用・改変不可）
+- **JVNV コーパス**: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
+- **tohoku-nlp/bert-base-japanese**: [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)
+- **openSMILE (eGeMAPS)**: 研究・教育用途はオープンソース。商用利用には [audEERING 商用ライセンス](https://www.audeering.com/) が必要

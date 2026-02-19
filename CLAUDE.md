@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-EmotionBridge is a learning-based conversion engine that bridges text emotion analysis and emotional speech synthesis. Inspired by CLIP's architecture, it aligns "text emotion space" and "audio emotion space" in a shared latent space. The project is developed in phases:
+EmotionBridge is a conversion engine that bridges text emotion analysis and emotional speech synthesis. It classifies text emotion, maps the result to TTS control parameters via prosody feature matching, and synthesizes emotional speech. The project is developed in phases:
 
-- **Phase 0**: Japanese text emotion encoder — BERT + regression head trained on WRIME dataset, outputs 8D emotion vectors (Plutchik's basic emotions)
+- **Phase 0**: Japanese text emotion classifier — BERT + classification head trained on WRIME dataset, outputs 6-class emotion probabilities (anger, disgust, fear, happy, sad, surprise)
 - **Phase 1**: VOICEVOX TTS integration and audio sample generation pipeline — generates (text, control_params, audio) triplets
-- **Phase 3** (current): Prosody feature workflow（JVNV/VOICEVOXのeGeMAPS抽出・正規化・マッチング）
+- **Phase 3**: Prosody feature workflow — JVNV/VOICEVOX eGeMAPS extraction, cross-domain alignment, weighted matching → DeterministicMixer
+- **Bridge**: End-to-end inference pipeline — text → classifier → DeterministicMixer → VOICEVOX → emotional speech
 
 ## Commands
 

@@ -1,3 +1,11 @@
+"""感情-制御パラメータマッチングスクリプト。
+
+JVNV の感情クラスタ重心に近い VOICEVOX サンプルを探索し、
+感情ごとの推奨制御パラメータ（中央値）を算出する。
+cross_domain_alignment 有効時は aligned 特徴量を、
+distance_metric=weighted_euclidean 時は偏相関ベースの特徴量重みを使用する。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -214,6 +222,12 @@ def run_matching(
     voicevox_normalized: str | None,
     nearest_k: int | None,
 ) -> dict[str, Any]:
+    """感情ごとの JVNV 重心に最近傍の VOICEVOX サンプルを探索する。
+
+    cross_domain_alignment=True の場合は aligned parquet を入力に使う。
+    distance_metric=weighted_euclidean の場合は feature_weights.json の
+    偏相関ベース重みで距離計算を行い、制御不能な方向の影響を抑制する。
+    """
     config = load_experiment_config(config_path)
     v01_dir = resolve_path(config.v01.output_dir)
     v02_dir = resolve_path(config.v02.output_dir)

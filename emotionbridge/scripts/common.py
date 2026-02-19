@@ -26,7 +26,7 @@ class V01Config:
     equalize_speaker_stats: bool = True
     random_seed: int = 42
     tsne_perplexities: list[float] = field(default_factory=lambda: [10.0, 30.0, 50.0])
-    nv_handling: str = "excise"
+    nv_handling: str = "excise"  # "excise"（物理除去）or "mask"（無音化）
 
 
 @dataclass(slots=True)
@@ -53,9 +53,9 @@ class V03Config:
     nearest_k: int = 25
     random_seed: int = 42
     tsne_perplexity: float = 30.0
-    cross_domain_alignment: bool = True
-    distance_metric: str = "weighted_euclidean"
-    feature_weight_min_corr: float = 0.05
+    cross_domain_alignment: bool = True  # pooled z-score によるドメイン間整合を行うか
+    distance_metric: str = "weighted_euclidean"  # "euclidean" or "weighted_euclidean"
+    feature_weight_min_corr: float = 0.05  # 重み付き距離で使う偏相関の下限閾値
 
 
 @dataclass(slots=True)

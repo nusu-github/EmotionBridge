@@ -151,6 +151,12 @@ def _discover_jvnv_wavs(root_dir: Path) -> list[Path]:
 
 
 def run_prepare(config_path: str) -> dict[str, object]:
+    """JVNV 音声の NV 区間処理とマニフェスト生成を行う。
+
+    v01.nv_handling の値に応じて NV 区間の処理方法を切り替える:
+    - "excise": NV 区間を物理的に除去（切除後が短すぎる場合は mask にフォールバック）
+    - "mask": NV 区間を無音化（ゼロ埋め）
+    """
     config = load_experiment_config(config_path)
     jvnv_root = resolve_path(config.paths.jvnv_root)
     nv_label_dir = resolve_path(config.paths.jvnv_nv_label_dir)

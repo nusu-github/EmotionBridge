@@ -324,6 +324,12 @@ def _train_deterministic(
 
 
 def train_phase3b_generator(config: Phase3bConfig) -> dict[str, Any]:
+    """Phase 3b ジェネレータの学習エントリポイント。
+
+    config.data.strategy に応じて処理を分岐する:
+    - "deterministic": 教師表から DeterministicMixer を直接構築（学習ループなし）
+    - "lookup_table_dirichlet": Dirichlet 拡張データで ParameterGenerator を学習
+    """
     _set_seed(config.data.random_seed)
     device = _resolve_device(config.train.device)
 

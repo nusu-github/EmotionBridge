@@ -1,7 +1,7 @@
 [project]
 name = "emotionbridge"
-version = "0.1.0"
-description = "EmotionBridge Phase 0: Japanese text emotion encoder"
+version = "1.0.0"
+description = "Learning-based conversion engine bridging text emotion analysis and emotional speech synthesis"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

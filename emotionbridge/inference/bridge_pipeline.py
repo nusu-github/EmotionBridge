@@ -80,6 +80,12 @@ class RuleBasedStyleSelector:
 
 
 class EmotionBridgePipeline:
+    """テキストから感情音声を生成する統合パイプライン。
+
+    テキスト感情分類 → 制御パラメータ生成 → スタイル選択 → VOICEVOX合成
+    の一連の処理を束ねる。信頼度が低い場合はフォールバックスタイルを使用する。
+    """
+
     def __init__(
         self,
         *,
@@ -201,6 +207,12 @@ def _load_generator_checkpoint(
     *,
     device: str,
 ) -> tuple[nn.Module, torch.device]:
+    """チェックポイントからジェネレータモデルをロードする。
+
+    checkpoint 内の model_type フィールドで自動判別する:
+    - "deterministic_mixer": DeterministicMixer（教師表の線形混合）
+    - "parameter_generator": ParameterGenerator（NN版）
+    """
     path = Path(checkpoint_path)
     if not path.exists():
         msg = f"generator checkpoint not found: {path}"
@@ -262,6 +274,11 @@ async def create_pipeline(
     fallback_threshold: float,
     device: str,
 ) -> EmotionBridgePipeline:
+    """EmotionBridgePipeline を構築するファクトリ関数。
+
+    各コンポーネント（分類器・ジェネレータ・スタイル選択・VOICEVOX）を
+    初期化し、VOICEVOX Engine への疫通確認後にパイプラインを返す。
+    """
     classifier = EmotionEncoder(str(classifier_checkpoint), device=device)
     if not classifier.is_classifier:
         msg = "bridge requires a classifier checkpoint for --classifier-checkpoint"

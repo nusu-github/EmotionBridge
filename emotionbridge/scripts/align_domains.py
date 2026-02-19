@@ -1,3 +1,9 @@
+"""クロスドメイン整合スクリプト。
+
+JVNV（実音声）と VOICEVOX（合成音声）の per-speaker 正規化済み eGeMAPS 特徴量を
+pooled z-score で再正規化し、ドメイン間の距離比較を有意にする。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -129,6 +135,11 @@ def run_alignment(
     voicevox_normalized: str | None,
     output_dir: str | None,
 ) -> dict[str, Any]:
+    """JVNV/VOICEVOX の正規化済み特徴量を pooled z-score で整合する。
+
+    入力: per-speaker z-score 済み parquet（v01, v02）
+    出力: aligned parquet（v03）と整合パラメータ JSON
+    """
     config = load_experiment_config(config_path)
     v01_dir = resolve_path(config.v01.output_dir)
     v02_dir = resolve_path(config.v02.output_dir)
