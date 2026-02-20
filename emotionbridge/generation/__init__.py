@@ -6,12 +6,10 @@
 
 from emotionbridge.generation.grid import GridSampler
 from emotionbridge.generation.pipeline import GenerationPipeline
-from emotionbridge.generation.text_selector import TextSelector
 from emotionbridge.generation.validator import AudioValidator
 
 __all__ = [
     "AudioValidator",
     "GenerationPipeline",
     "GridSampler",
-    "TextSelector",
 ]

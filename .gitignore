@@ -79,5 +79,5 @@ poetry.toml
 pyrightconfig.json
 
 # Training artifacts
-artifacts/
-data/
+/artifacts/
+/data/
