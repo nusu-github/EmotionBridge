@@ -79,9 +79,7 @@ def _load_all_records(
         trust_remote_code=True,
     )
 
-    split_sizes = {
-        split_name: len(split_dataset) for split_name, split_dataset in dataset.items()
-    }
+    split_sizes = {str(split_name): len(split_dataset) for split_name, split_dataset in dataset.items()}
 
     if data_config.use_official_split:
         ordered = [
@@ -159,9 +157,7 @@ def build_classifier_splits(
     raw_max = raw_targets8.max(axis=1)
     filter_mask = raw_max > data_config.filter_max_intensity_lte
 
-    filtered_texts = [
-        text for text, keep in zip(texts, filter_mask, strict=True) if keep
-    ]
+    filtered_texts = [text for text, keep in zip(texts, filter_mask, strict=True) if keep]
     filtered_raw_targets8 = raw_targets8[filter_mask]
     filtered_raw_targets6 = filtered_raw_targets8[:, _WRIME_TO_JVNV_INDICES]
 
@@ -194,9 +190,7 @@ def build_classifier_splits(
     test_ratio_within_holdout = data_config.test_ratio / holdout_ratio
 
     holdout_stratify = (
-        hard_labels[holdout_idx]
-        if stratified_first and data_config.stratify_after_filter
-        else None
+        hard_labels[holdout_idx] if stratified_first and data_config.stratify_after_filter else None
     )
     val_idx, test_idx, stratified_second = _safe_split(
         indices=holdout_idx,

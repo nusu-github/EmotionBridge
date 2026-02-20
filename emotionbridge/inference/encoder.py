@@ -31,7 +31,9 @@ class EmotionEncoder:
         self.model.to(self.device)
         self.model.eval()
 
-        self.tokenizer = AutoTokenizer.from_pretrained(str(self.checkpoint_path))
+        tokenizer = AutoTokenizer.from_pretrained(str(self.checkpoint_path))
+        assert tokenizer is not None
+        self.tokenizer = tokenizer
 
         # ラベル名のリストを保持（JVNV の順序を期待）
         if self.model.config.id2label:

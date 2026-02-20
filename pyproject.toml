@@ -93,7 +93,14 @@ ignore = [
   "D403", # first-word-uncapitalized
   "RUF001", # ambiguous-unicode-character-string
   "RUF002", # ambiguous-unicode-character-docstring
-  "RUF003" # ambiguous-unicode-character-comment
+  "RUF003", # ambiguous-unicode-character-comment
+  "PLC0415", # import-not-at-top — 意図的な lazy import（重い依存の遅延ロード）
+  "PLR2004", # magic-value-comparison — ML/音声処理コードでは定数化が可読性を低下させる
+  "PLR0913", # too-many-arguments — パイプライン関数では不可避
+  "PLR0915", # too-many-statements — 同上
+  "PLR0912", # too-many-branches — 同上
+  "PLW2901", # redefined-loop-name — PyTorch の .to(device) パターン
+  "NPY002", # numpy-legacy-random — seed 一括設定関数内で torch/random と揃えて使用
 ]
 
 [tool.ruff.lint.flake8-pytest-style]

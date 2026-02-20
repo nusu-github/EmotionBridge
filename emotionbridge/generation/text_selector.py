@@ -39,7 +39,7 @@ def _load_jvnv_csv(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8") as f:
         reader = csv.reader(f, delimiter="|")
         for row in reader:
-            if len(row) < 3:  # noqa: PLR2004
+            if len(row) < 3:
                 continue
             utterance_id = row[0].strip()
             full_text = row[2].strip()
