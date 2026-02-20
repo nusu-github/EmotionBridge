@@ -95,6 +95,13 @@ uv run python main.py generate-samples --config configs/audio_gen.yaml
 uv run python main.py list-speakers
 ```
 
+`configs/audio_gen*.yaml` の `voicevox.base_url` で接続先を指定する（`http://` / `https://` 両対応）。
+
+```yaml
+voicevox:
+  base_url: https://your-voicevox.example.com
+```
+
 ### Phase 3: 韻律特徴パイプライン
 
 実行順序に注意。上から順に実行する。
@@ -149,7 +156,7 @@ uv run python main.py bridge \
 | `--character`          | `zundamon`               | スタイルマッピング内のキャラクターキー                         |
 | `--fallback-threshold` | `0.3`                    | 感情確信度がこの値未満の場合デフォルトスタイルにフォールバック |
 | `--device`             | `cuda`                   | 推論デバイス（`cuda` または `cpu`）                            |
-| `--voicevox-url`       | `http://127.0.0.1:50021` | VOICEVOX Engine URL                                            |
+| `--voicevox-url`       | `http://127.0.0.1:50021` | VOICEVOX Engine URL（`http://` / `https://`）                  |
 
 ### 主観評価
 
@@ -189,7 +196,7 @@ pipeline = await create_pipeline(
     classifier_checkpoint="artifacts/classifier/checkpoints/best_model",
     generator_checkpoint="artifacts/generator/checkpoints/best_generator.pt",
     style_mapping="artifacts/prosody/style_mapping.json",
-    voicevox_url="http://127.0.0.1:50021",
+    voicevox_url="https://your-voicevox.example.com",
     character="zundamon",
     fallback_threshold=0.3,
     device="cuda",

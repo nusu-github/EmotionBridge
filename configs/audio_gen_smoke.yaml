@@ -2,8 +2,7 @@ classifier_checkpoint: artifacts/classifier/checkpoints/best_model
 device: cuda
 
 voicevox:
-  host: 127.0.0.1
-  port: 50021
+  base_url: http://127.0.0.1:50021
   default_speaker_id: 0
   timeout: 30.0
   max_retries: 3

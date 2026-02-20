@@ -87,8 +87,7 @@ class ClassifierConfig:
 class VoicevoxConfig:
     """VOICEVOX Engine接続設定。"""
 
-    host: str = "127.0.0.1"
-    port: int = 50021
+    base_url: str = "http://127.0.0.1:50021"
     default_speaker_id: int = 0
     speaker_ids: list[int] | None = None
     timeout: float = 30.0
@@ -97,9 +96,12 @@ class VoicevoxConfig:
     output_sampling_rate: int = 24000
     output_stereo: bool = False
 
-    @property
-    def base_url(self) -> str:
-        return f"http://{self.host}:{self.port}"
+    def __post_init__(self) -> None:
+        normalized = self.base_url.strip().rstrip("/")
+        if not normalized.startswith(("http://", "https://")):
+            msg = "voicevox.base_url must start with 'http://' or 'https://'"
+            raise ValueError(msg)
+        self.base_url = normalized
 
 
 @dataclass(slots=True)
