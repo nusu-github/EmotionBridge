@@ -5,7 +5,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
+from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.manifold import TSNE
 from sklearn.metrics import r2_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -103,29 +105,30 @@ def _compute_corr_matrices(
     control_cols: list[str],
     feature_cols: list[str],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    pearson_matrix = pd.DataFrame(
-        index=control_cols,
-        columns=feature_cols,
-        dtype=np.float64,
-    )
-    spearman_matrix = pd.DataFrame(
-        index=control_cols,
-        columns=feature_cols,
-        dtype=np.float64,
-    )
+    control_values = df[control_cols].to_numpy(dtype=np.float64, copy=False)
+    feature_values = df[feature_cols].to_numpy(dtype=np.float64, copy=False)
 
-    for control in control_cols:
-        control_values = df[control].to_numpy(dtype=np.float64)
-        for feature in feature_cols:
-            feature_values = df[feature].to_numpy(dtype=np.float64)
-            pearson_matrix.loc[control, feature] = pearsonr(
-                control_values,
-                feature_values,
-            ).statistic
-            spearman_matrix.loc[control, feature] = spearmanr(
-                control_values,
-                feature_values,
-            ).statistic
+    def _matrix_pearson(left: np.ndarray, right: np.ndarray) -> np.ndarray:
+        left_centered = left - left.mean(axis=0, keepdims=True)
+        right_centered = right - right.mean(axis=0, keepdims=True)
+        numerator = left_centered.T @ right_centered
+        denominator = np.sqrt(
+            np.sum(left_centered**2, axis=0, keepdims=True).T
+            * np.sum(right_centered**2, axis=0, keepdims=True),
+        )
+        corr = np.full_like(numerator, np.nan, dtype=np.float64)
+        valid = denominator > 0.0
+        corr[valid] = numerator[valid] / denominator[valid]
+        return corr
+
+    pearson_values = _matrix_pearson(control_values, feature_values)
+
+    control_ranks = pd.DataFrame(control_values).rank(axis=0, method="average").to_numpy()
+    feature_ranks = pd.DataFrame(feature_values).rank(axis=0, method="average").to_numpy()
+    spearman_values = _matrix_pearson(control_ranks, feature_ranks)
+
+    pearson_matrix = pd.DataFrame(pearson_values, index=control_cols, columns=feature_cols)
+    spearman_matrix = pd.DataFrame(spearman_values, index=control_cols, columns=feature_cols)
     return pearson_matrix, spearman_matrix
 
 
@@ -138,27 +141,44 @@ def _residualize(target: np.ndarray, covariates: np.ndarray) -> np.ndarray:
     return target - predicted
 
 
+def _residualize_matrix(targets: np.ndarray, covariates: np.ndarray) -> np.ndarray:
+    if covariates.size == 0:
+        return targets - targets.mean(axis=0, keepdims=True)
+    model = LinearRegression()
+    model.fit(covariates, targets)
+    predicted = model.predict(covariates)
+    return targets - predicted
+
+
+def _corr_with_vector(vector: np.ndarray, matrix: np.ndarray) -> np.ndarray:
+    centered_vector = vector - vector.mean()
+    centered_matrix = matrix - matrix.mean(axis=0, keepdims=True)
+    numerator = centered_vector @ centered_matrix
+    denominator = np.sqrt(np.sum(centered_vector**2) * np.sum(centered_matrix**2, axis=0))
+    corr = np.full(centered_matrix.shape[1], np.nan, dtype=np.float64)
+    valid = denominator > 0.0
+    corr[valid] = numerator[valid] / denominator[valid]
+    return corr
+
+
 def _partial_correlations(
     df: pd.DataFrame,
     control_cols: list[str],
     feature_cols: list[str],
 ) -> pd.DataFrame:
-    result = pd.DataFrame(index=control_cols, columns=feature_cols, dtype=np.float64)
     control_values = df[control_cols].to_numpy(dtype=np.float64)
+    feature_values = df[feature_cols].to_numpy(dtype=np.float64)
+    result_values = np.full((len(control_cols), len(feature_cols)), np.nan, dtype=np.float64)
 
-    for control_index, control in enumerate(control_cols):
+    for control_index, _control in enumerate(control_cols):
         target_control = control_values[:, control_index]
         other_indices = [index for index in range(len(control_cols)) if index != control_index]
         covariates = control_values[:, other_indices] if other_indices else np.empty((len(df), 0))
         control_residual = _residualize(target_control, covariates)
+        feature_residuals = _residualize_matrix(feature_values, covariates)
+        result_values[control_index, :] = _corr_with_vector(control_residual, feature_residuals)
 
-        for feature in feature_cols:
-            feature_values = df[feature].to_numpy(dtype=np.float64)
-            feature_residual = _residualize(feature_values, covariates)
-            corr = pearsonr(control_residual, feature_residual).statistic
-            result.loc[control, feature] = corr
-
-    return result
+    return pd.DataFrame(result_values, index=control_cols, columns=feature_cols)
 
 
 def _pick_expected_features(feature_cols: list[str]) -> dict[str, list[str]]:
@@ -421,6 +441,30 @@ def run_evaluation(
             title="V-02 Control vs Arousal/Valence Pearson Correlation",
         )
 
+    pca_embedded: np.ndarray | None = None
+    pca_ratio: np.ndarray | None = None
+    tsne_embedded: np.ndarray | None = None
+    tsne_perplexity = (
+        config.v02.tsne_perplexities[1] if len(config.v02.tsne_perplexities) > 1 else 30.0
+    )
+    if len(df) >= 3 and feature_cols:
+        feature_values = df[feature_cols].to_numpy(dtype=np.float32, copy=False)
+
+        pca = PCA(n_components=2, random_state=config.v02.random_seed)
+        pca_embedded = pca.fit_transform(feature_values)
+        pca_ratio = pca.explained_variance_ratio_
+
+        actual_perplexity = min(tsne_perplexity, max(2, len(df) // 4))
+        tsne = TSNE(
+            n_components=2,
+            perplexity=actual_perplexity,
+            random_state=config.v02.random_seed,
+            init="pca",
+            learning_rate="auto",
+            max_iter=1000,
+        )
+        tsne_embedded = tsne.fit_transform(feature_values)
+
     marker_column = "style_id" if "style_id" in df.columns else None
     for control in ["ctrl_pitch_shift", "ctrl_speed", "ctrl_energy"]:
         if control not in control_cols:
@@ -433,6 +477,8 @@ def run_evaluation(
             output_path=plots_dir / f"v02_pca_{control}.png",
             title=f"V-02 PCA colored by {control}",
             random_seed=config.v02.random_seed,
+            embedded=pca_embedded,
+            explained_variance_ratio=pca_ratio,
         )
         plot_tsne_scatter(
             df,
@@ -441,10 +487,9 @@ def run_evaluation(
             style_col=marker_column,
             output_path=plots_dir / f"v02_tsne_{control}.png",
             title=f"V-02 t-SNE colored by {control}",
-            perplexity=config.v02.tsne_perplexities[1]
-            if len(config.v02.tsne_perplexities) > 1
-            else 30.0,
+            perplexity=tsne_perplexity,
             random_seed=config.v02.random_seed,
+            embedded=tsne_embedded,
         )
 
     feature_weights = _compute_feature_weights(

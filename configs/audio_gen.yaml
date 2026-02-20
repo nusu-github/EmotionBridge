@@ -36,7 +36,7 @@ validation:
   min_rms_amplitude: 0.001
 
 generation:
-  output_dir: artifacts/phase1_v2
+  output_dir: artifacts/audio_gen
   max_concurrent_requests: 4
   checkpoint_interval: 100
   skip_existing: true

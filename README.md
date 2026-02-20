@@ -163,8 +163,8 @@ uv run python main.py bridge \
 ```bash
 # 評価刺激と回答テンプレートを生成
 uv run python -m emotionbridge.scripts.prepare_subjective_eval \
-  --dataset-path artifacts/phase1_multistyle_smoke/dataset/triplet_dataset.parquet \
-  --output-dir artifacts/phase3/subjective_eval/pilot_v01 \
+  --dataset-path artifacts/audio_gen_multistyle_smoke/dataset/triplet_dataset.parquet \
+  --output-dir artifacts/prosody/subjective_eval/pilot_v01 \
   --character zundamon \
   --classifier-checkpoint artifacts/classifier/checkpoints/best_model \
   --generator-checkpoint artifacts/generator/checkpoints/best_generator.pt \

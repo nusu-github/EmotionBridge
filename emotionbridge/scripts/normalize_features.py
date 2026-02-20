@@ -121,9 +121,8 @@ def _normalize(
         index = group_df.index
         means = pd.Series(group_params[str(group_name)]["means"])
         stds = pd.Series(group_params[str(group_name)]["stds"])
-        normalized.loc[index, valid_features] = (
-            df.loc[index, valid_features] - means[valid_features]
-        ) / stds[valid_features]
+        zscored = (df.loc[index, valid_features] - means[valid_features]) / stds[valid_features]
+        normalized.loc[index, valid_features] = zscored.astype("float32")
 
     normalized = normalized.drop(columns=dropped_features, errors="ignore")
 

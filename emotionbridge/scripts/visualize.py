@@ -24,21 +24,26 @@ def plot_tsne_scatter(
     perplexity: float,
     random_seed: int,
     style_col: str | None = None,
+    embedded: np.ndarray | None = None,
 ) -> None:
-    features = df[feature_cols].to_numpy(dtype=np.float32, copy=False)
     if len(df) < 3:
         return
 
-    actual_perplexity = min(perplexity, max(2, len(df) // 4))
-    reducer = TSNE(
-        n_components=2,
-        perplexity=actual_perplexity,
-        random_state=random_seed,
-        init="pca",
-        learning_rate="auto",
-        max_iter=1000,
-    )
-    embedded = reducer.fit_transform(features)
+    if embedded is None:
+        features = df[feature_cols].to_numpy(dtype=np.float32, copy=False)
+        actual_perplexity = min(perplexity, max(2, len(df) // 4))
+        reducer = TSNE(
+            n_components=2,
+            perplexity=actual_perplexity,
+            random_state=random_seed,
+            init="pca",
+            learning_rate="auto",
+            max_iter=1000,
+        )
+        embedded = reducer.fit_transform(features)
+    if embedded.shape[0] != len(df):
+        msg = "embedded row count must match df length"
+        raise ValueError(msg)
 
     plot_df = df[[color_col]].copy()
     plot_df["tsne_x"] = embedded[:, 0]
@@ -75,13 +80,23 @@ def plot_pca_scatter(
     title: str,
     random_seed: int,
     style_col: str | None = None,
+    embedded: np.ndarray | None = None,
+    explained_variance_ratio: np.ndarray | None = None,
 ) -> None:
-    features = df[feature_cols].to_numpy(dtype=np.float32, copy=False)
     if len(df) < 3:
         return
 
-    reducer = PCA(n_components=2, random_state=random_seed)
-    embedded = reducer.fit_transform(features)
+    if embedded is None or explained_variance_ratio is None:
+        features = df[feature_cols].to_numpy(dtype=np.float32, copy=False)
+        reducer = PCA(n_components=2, random_state=random_seed)
+        embedded = reducer.fit_transform(features)
+        ratio = reducer.explained_variance_ratio_
+    else:
+        ratio = explained_variance_ratio
+
+    if embedded.shape[0] != len(df):
+        msg = "embedded row count must match df length"
+        raise ValueError(msg)
 
     plot_df = df[[color_col]].copy()
     plot_df["pca_x"] = embedded[:, 0]
@@ -101,7 +116,6 @@ def plot_pca_scatter(
         s=35,
         ax=ax,
     )
-    ratio = reducer.explained_variance_ratio_
     ax.set_title(title)
     ax.set_xlabel(f"PC1 ({ratio[0] * 100:.1f}%)")
     ax.set_ylabel(f"PC2 ({ratio[1] * 100:.1f}%)")

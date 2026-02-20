@@ -1,4 +1,4 @@
-classifier_checkpoint: artifacts/phase0_v2/checkpoints/best_model
+classifier_checkpoint: artifacts/classifier/checkpoints/best_model
 device: cuda
 
 data:
