@@ -271,6 +271,36 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Conditional Go 判定の valence R2 下限",
     )
 
+    eval_style_influence_parser = eval_subparsers.add_parser(
+        "style-influence",
+        help="V-03 style_id主効果/交互作用評価",
+    )
+    eval_style_influence_parser.add_argument(
+        "--config",
+        default="configs/experiment_config.yaml",
+        help="実験設定ファイル",
+    )
+    eval_style_influence_parser.add_argument(
+        "--voicevox-raw",
+        default=None,
+        help="VOICEVOX生特徴量parquet",
+    )
+    eval_style_influence_parser.add_argument(
+        "--jvnv-normalized",
+        default=None,
+        help="JVNV正規化特徴量parquet",
+    )
+    eval_style_influence_parser.add_argument(
+        "--target-style-ids",
+        default=None,
+        help="対象style_idをカンマ区切りで指定",
+    )
+    eval_style_influence_parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="出力先ディレクトリ（未指定時はv03）",
+    )
+
     return parser
 
 
@@ -517,6 +547,25 @@ def _cmd_evaluate_continuous_axes(
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def _cmd_evaluate_style_influence(
+    config: str,
+    voicevox_raw: str | None,
+    jvnv_normalized: str | None,
+    target_style_ids: str | None,
+    output_dir: str | None,
+) -> None:
+    from emotionbridge.scripts.evaluate_style_influence import run_evaluation
+
+    result = run_evaluation(
+        config_path=config,
+        voicevox_raw=voicevox_raw,
+        jvnv_normalized=jvnv_normalized,
+        target_style_ids_raw=target_style_ids,
+        output_dir=output_dir,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def _dispatch_evaluate(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     handlers = {
         "roundtrip": lambda: _cmd_evaluate_roundtrip(
@@ -548,6 +597,13 @@ def _dispatch_evaluate(args: argparse.Namespace, parser: argparse.ArgumentParser
             args.anchors_json,
             args.arousal_r2_threshold,
             args.valence_r2_threshold,
+        ),
+        "style-influence": lambda: _cmd_evaluate_style_influence(
+            args.config,
+            args.voicevox_raw,
+            args.jvnv_normalized,
+            args.target_style_ids,
+            args.output_dir,
         ),
     }
 

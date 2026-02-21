@@ -1,6 +1,8 @@
 import argparse
+import json
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -193,6 +195,76 @@ def _max_pairwise_centroid_distance(style_centroids: dict[int, np.ndarray]) -> f
     return max_distance
 
 
+def _build_raw_global_profiles(
+    *,
+    raw_path: str | Path,
+    target_style_ids: list[int],
+    jvnv_feature_cols: list[str],
+) -> tuple[dict[int, dict[str, Any]], dict[int, np.ndarray], list[str], float] | None:
+    path = resolve_path(raw_path)
+    if not path.exists():
+        return None
+
+    raw_df = read_parquet(path).copy()
+    ensure_columns(raw_df, ["style_id"], where="voicevox raw")
+    raw_df = raw_df[raw_df["style_id"].isin(target_style_ids)].reset_index(drop=True)
+    if raw_df.empty:
+        return None
+
+    raw_feature_cols = sorted(set(jvnv_feature_cols).intersection(_feature_cols(raw_df)))
+    if not raw_feature_cols:
+        return None
+
+    means = raw_df[raw_feature_cols].mean(axis=0)
+    stds = raw_df[raw_feature_cols].std(axis=0, ddof=0)
+    valid_cols = sorted(stds[stds > 0.0].index.tolist())
+    if not valid_cols:
+        return None
+
+    normalized_raw_df = raw_df[["style_id"]].copy()
+    normalized_raw_df[valid_cols] = (raw_df[valid_cols] - means[valid_cols]) / stds[valid_cols]
+    style_profiles, style_centroids = _build_style_profiles(
+        voice_df=normalized_raw_df,
+        feature_cols=valid_cols,
+        style_ids=target_style_ids,
+    )
+    if not style_centroids:
+        return None
+
+    max_pairwise_distance = _max_pairwise_centroid_distance(style_centroids)
+    return style_profiles, style_centroids, valid_cols, max_pairwise_distance
+
+
+def _load_style_signal_status(
+    *,
+    metrics_path: str | Path,
+    target_style_ids: list[int],
+) -> tuple[str, str | None, str]:
+    path = resolve_path(metrics_path)
+    if not path.exists():
+        return "unavailable", None, f"metrics file not found: {path}"
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return "unavailable", str(path), f"failed to read metrics file: {exc}"
+
+    status = str(payload.get("style_signal_status", "unavailable"))
+    if status not in {"retain_style", "deprioritize_style"}:
+        return "unavailable", str(path), "style_signal_status is missing or invalid"
+
+    styles_raw = payload.get("styles_used")
+    if isinstance(styles_raw, list):
+        try:
+            metric_styles = sorted(int(item) for item in styles_raw)
+        except Exception:
+            return "unavailable", str(path), "styles_used in metrics is invalid"
+        if metric_styles != sorted(target_style_ids):
+            return "unavailable", str(path), "styles_used mismatch between metrics and target styles"
+
+    return status, str(path), "loaded from style influence metrics"
+
+
 def run_build_style_mapping(
     *,
     config_path: str,
@@ -255,6 +327,7 @@ def run_build_style_mapping(
         raise ValueError(msg)
 
     profile_source = "voicevox_egemaps_normalized(style_id_zscore)"
+    profile_source_reason = "default_style_id_zscore_space"
 
     style_profiles, style_centroids = _build_style_profiles(
         voice_df=voicevox_df,
@@ -263,46 +336,46 @@ def run_build_style_mapping(
     )
 
     max_pairwise_distance = _max_pairwise_centroid_distance(style_centroids)
+    style_signal_status, style_signal_metrics_path, style_signal_info = _load_style_signal_status(
+        metrics_path=v03_dir / "style_influence_metrics.json",
+        target_style_ids=target_style_ids,
+    )
 
-    # style_id内z-scoreの重心は理論上ゼロに揃うため、距離が退化したら
-    # raw特徴の全体z-score空間でstyle重心を再計算する。
-    if max_pairwise_distance < 1e-6:
-        raw_path = voicevox_path.parent / "voicevox_egemaps_raw.parquet"
-        if raw_path.exists():
-            raw_df = read_parquet(raw_path).copy()
-            ensure_columns(raw_df, ["style_id"], where="voicevox raw")
-            raw_df = raw_df[raw_df["style_id"].isin(target_style_ids)].reset_index(
-                drop=True,
+    raw_path = voicevox_path.parent / "voicevox_egemaps_raw.parquet"
+    should_force_raw = style_signal_status == "retain_style"
+    if should_force_raw:
+        raw_profiles = _build_raw_global_profiles(
+            raw_path=raw_path,
+            target_style_ids=target_style_ids,
+            jvnv_feature_cols=jvnv_feature_cols,
+        )
+        if raw_profiles is not None:
+            style_profiles, style_centroids, feature_cols, max_pairwise_distance = raw_profiles
+            profile_source = "voicevox_egemaps_raw(global_zscore_style_signal)"
+            profile_source_reason = "style_signal_status=retain_style"
+        else:
+            profile_source_reason = (
+                "style_signal_status=retain_style but raw global z-score profile could not be built"
             )
 
-            raw_feature_cols = sorted(
-                set(jvnv_feature_cols).intersection(_feature_cols(raw_df)),
+    if (
+        not should_force_raw
+        and max_pairwise_distance < float(config.v03.style_centroid_degeneracy_threshold)
+    ):
+        raw_profiles = _build_raw_global_profiles(
+            raw_path=raw_path,
+            target_style_ids=target_style_ids,
+            jvnv_feature_cols=jvnv_feature_cols,
+        )
+        if raw_profiles is not None:
+            style_profiles, style_centroids, feature_cols, max_pairwise_distance = raw_profiles
+            profile_source = "voicevox_egemaps_raw(global_zscore_fallback)"
+            profile_source_reason = "centroid_degeneracy_fallback"
+            logger.warning(
+                "Style centroid degeneration detected; fallback to raw global z-score space. max_pairwise_distance=%.6e threshold=%.6e",
+                max_pairwise_distance,
+                float(config.v03.style_centroid_degeneracy_threshold),
             )
-            if raw_feature_cols:
-                means = raw_df[raw_feature_cols].mean(axis=0)
-                stds = raw_df[raw_feature_cols].std(axis=0, ddof=0)
-                valid_cols = sorted(stds[stds > 0.0].index.tolist())
-
-                if valid_cols:
-                    normalized_raw_df = raw_df[["style_id"]].copy()
-                    normalized_raw_df[valid_cols] = (raw_df[valid_cols] - means[valid_cols]) / stds[
-                        valid_cols
-                    ]
-
-                    feature_cols = valid_cols
-                    style_profiles, style_centroids = _build_style_profiles(
-                        voice_df=normalized_raw_df,
-                        feature_cols=feature_cols,
-                        style_ids=target_style_ids,
-                    )
-                    max_pairwise_distance = _max_pairwise_centroid_distance(
-                        style_centroids,
-                    )
-                    profile_source = "voicevox_egemaps_raw(global_zscore_fallback)"
-                    logger.warning(
-                        "Style centroid degeneration detected; fallback to raw global z-score space. max_pairwise_distance=%.6e",
-                        max_pairwise_distance,
-                    )
 
     if not style_centroids:
         msg = "No style centroid could be computed"
@@ -361,6 +434,10 @@ def run_build_style_mapping(
         "created_at": datetime.now(tz=UTC).isoformat(),
         "source_voicevox_normalized": str(voicevox_path),
         "profile_source": profile_source,
+        "profile_source_reason": profile_source_reason,
+        "style_signal_status": style_signal_status,
+        "style_signal_metrics_path": style_signal_metrics_path,
+        "style_signal_info": style_signal_info,
         "max_pairwise_centroid_distance": max_pairwise_distance,
         "feature_count": len(feature_cols),
         "styles": {str(style_id): profile for style_id, profile in style_profiles.items()},
@@ -374,6 +451,10 @@ def run_build_style_mapping(
         "source_jvnv_normalized": str(jvnv_path),
         "source_voicevox_normalized": str(voicevox_path),
         "profile_source": profile_source,
+        "profile_source_reason": profile_source_reason,
+        "style_signal_status": style_signal_status,
+        "style_signal_metrics_path": style_signal_metrics_path,
+        "style_signal_info": style_signal_info,
         "max_pairwise_centroid_distance": max_pairwise_distance,
         "feature_count": len(feature_cols),
         "distance_matrix": distance_nested,
@@ -390,6 +471,10 @@ def run_build_style_mapping(
         "created_at": datetime.now(tz=UTC).isoformat(),
         "selected_character": selected_character,
         "styles_used": target_style_ids,
+        "style_signal_status": style_signal_status,
+        "style_signal_metrics_path": style_signal_metrics_path,
+        "profile_source": profile_source,
+        "profile_source_reason": profile_source_reason,
         "characters": {
             selected_character: {
                 "mapping": best_style_by_emotion,
@@ -403,6 +488,7 @@ def run_build_style_mapping(
             "style_profiles": str(styles_json),
             "distance_matrix": str(distance_json),
             "distance_matrix_table": str(distance_parquet),
+            "style_signal_metrics": style_signal_metrics_path,
         },
     }
 
@@ -420,6 +506,10 @@ def run_build_style_mapping(
         f"- Feature count: {len(feature_cols)}",
         f"- Target styles: {target_style_ids}",
         f"- Character: {selected_character}",
+        f"- Profile source: {profile_source}",
+        f"- Profile source reason: {profile_source_reason}",
+        f"- Style signal status: {style_signal_status}",
+        f"- Style signal metrics: {style_signal_metrics_path}",
         "",
         "## Best Style by Emotion",
     ]

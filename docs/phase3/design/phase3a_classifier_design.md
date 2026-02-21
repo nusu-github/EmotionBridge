@@ -31,7 +31,7 @@
 | EB3-C01-01-001 | joy→happy, sadness→sad, anger→anger, fear→fear, disgust→disgust, surprise→surpriseの直接対応 |
 | EB3-C01-01-002 | anticipation, trustを除外 |
 | EB3-C01-01-003 | **決定**: WRIMEの連続強度→6感情soft labelを本採用し、学習はsoft targetで統一 |
-| EB3-C01-02-001 | sbintuitions/modernbert-ja-70m を使用 |
+| EB3-C01-02-001 | sbintuitions/modernbert-ja-130m を使用 |
 | EB3-C01-02-002 | 6クラス分類ヘッド（Softmax） |
 | EB-P0-01-04-002 | Phase 0単体の固定閾値Go/No-Goは廃止し、確率分布指標を継続監視 |
 
@@ -404,7 +404,7 @@ data:
   soft_label_temperature: 1.0  # soft_label方式の場合のみ
 
 model:
-  pretrained_model_name: sbintuitions/modernbert-ja-70m
+  pretrained_model_name: sbintuitions/modernbert-ja-130m
   bottleneck_dim: 256
   dropout: 0.1
   num_classes: 6
@@ -543,12 +543,12 @@ checkpoint = {
     "model_type": "classifier",  # 新規追加。"regressor"との判別用
     "model_state_dict": model.state_dict(),
     "model_config": {
-        "pretrained_model_name": "sbintuitions/modernbert-ja-70m",
+        "pretrained_model_name": "sbintuitions/modernbert-ja-130m",
         "bottleneck_dim": 256,
         "dropout": 0.1,
         "num_classes": 6,
     },
-    "tokenizer_name": "sbintuitions/modernbert-ja-70m",
+    "tokenizer_name": "sbintuitions/modernbert-ja-130m",
     "max_length": 128,
     "emotion_labels": JVNV_EMOTION_LABELS,  # 8D→6Dに変更
     "label_conversion": "argmax",  # 使用したラベル変換方式

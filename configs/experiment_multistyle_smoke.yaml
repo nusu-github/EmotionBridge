@@ -33,3 +33,8 @@ v03:
   nearest_k: 25
   random_seed: 42
   tsne_perplexity: 30.0
+  style_effect_min_partial_eta2: 0.01
+  style_effect_min_feature_ratio: 0.15
+  style_interaction_min_partial_eta2: 0.01
+  style_interaction_min_feature_ratio: 0.15
+  style_centroid_degeneracy_threshold: 1.0e-6

@@ -37,3 +37,8 @@ v03:
   cross_domain_alignment: true
   distance_metric: weighted_euclidean
   feature_weight_min_corr: 0.05
+  style_effect_min_partial_eta2: 0.01
+  style_effect_min_feature_ratio: 0.15
+  style_interaction_min_partial_eta2: 0.01
+  style_interaction_min_feature_ratio: 0.15
+  style_centroid_degeneracy_threshold: 1.0e-6

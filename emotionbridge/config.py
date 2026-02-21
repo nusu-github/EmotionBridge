@@ -20,7 +20,7 @@ class DataConfig:
 
 @dataclass(slots=True)
 class ModelConfig:
-    pretrained_model_name: str = "sbintuitions/modernbert-ja-70m"
+    pretrained_model_name: str = "sbintuitions/modernbert-ja-130m"
     dropout: float = 0.1
 
 

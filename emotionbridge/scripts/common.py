@@ -54,6 +54,11 @@ class V03Config:
     cross_domain_alignment: bool = True  # pooled z-score によるドメイン間整合を行うか
     distance_metric: str = "weighted_euclidean"  # "euclidean" or "weighted_euclidean"
     feature_weight_min_corr: float = 0.05  # 重み付き距離で使う偏相関の下限閾値
+    style_effect_min_partial_eta2: float = 0.01
+    style_effect_min_feature_ratio: float = 0.15
+    style_interaction_min_partial_eta2: float = 0.01
+    style_interaction_min_feature_ratio: float = 0.15
+    style_centroid_degeneracy_threshold: float = 1e-6
 
 
 @dataclass(slots=True)

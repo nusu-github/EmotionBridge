@@ -11,7 +11,7 @@ data:
   soft_label_temperature: 1.0
 
 model:
-  pretrained_model_name: sbintuitions/modernbert-ja-70m
+  pretrained_model_name: sbintuitions/modernbert-ja-130m
   dropout: 0.1
   num_classes: 6
 

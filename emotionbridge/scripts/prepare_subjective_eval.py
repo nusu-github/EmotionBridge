@@ -9,8 +9,10 @@ from typing import Any
 
 import pandas as pd
 
-from emotionbridge.constants import JVNV_EMOTION_LABELS
+from emotionbridge.constants import CONTROL_PARAM_NAMES, JVNV_EMOTION_LABELS
 from emotionbridge.inference import RuleBasedStyleSelector, create_pipeline
+from emotionbridge.tts.adapter import VoicevoxAdapter
+from emotionbridge.tts.types import ControlVector
 from emotionbridge.tts.voicevox_client import VoicevoxClient
 
 logger = logging.getLogger(__name__)
@@ -99,6 +101,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--target-emotions",
         default=",".join(JVNV_EMOTION_LABELS),
         help="対象感情（カンマ区切り、common6）",
+    )
+    parser.add_argument(
+        "--include-style-only-ab",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="styleのみを差し替えたA/B刺激を追加生成する",
+    )
+    parser.add_argument(
+        "--style-only-mode",
+        choices=["mapped_vs_default"],
+        default="mapped_vs_default",
+        help="style-only A/B比較モード",
     )
     parser.add_argument("--random-seed", type=int, default=42)
     return parser
@@ -201,6 +215,30 @@ async def _synthesize_baseline(
     return await client.synthesis(query, speaker_id=style_id)
 
 
+def _control_vector_from_dict(control_params: dict[str, float]) -> ControlVector:
+    return ControlVector(
+        pitch_shift=float(control_params.get("pitch_shift", 0.0)),
+        pitch_range=float(control_params.get("pitch_range", 0.0)),
+        speed=float(control_params.get("speed", 0.0)),
+        energy=float(control_params.get("energy", 0.0)),
+        pause_weight=float(control_params.get("pause_weight", 0.0)),
+    )
+
+
+async def _synthesize_with_control(
+    *,
+    client: VoicevoxClient,
+    adapter: VoicevoxAdapter,
+    text: str,
+    style_id: int,
+    control_params: dict[str, float],
+) -> bytes:
+    query = await client.audio_query(text=text, speaker_id=style_id)
+    control = _control_vector_from_dict(control_params)
+    modified = adapter.apply(query, control)
+    return await client.synthesis(modified, speaker_id=style_id)
+
+
 def _make_instructions(output_path: Path) -> None:
     lines = [
         "# Subjective Evaluation Instructions (Pilot)",
@@ -211,6 +249,10 @@ def _make_instructions(output_path: Path) -> None:
         "## 1) A/Bテスト",
         "- `manifests/ab_stimuli.csv` を使い、A/Bのどちらが指定感情をより表現しているか回答する。",
         "- 回答は `responses/ab_responses_template.csv` を複製して記入する。",
+        "",
+        "## 1.5) Style-only A/Bテスト",
+        "- `manifests/style_only_ab_stimuli.csv` を使い、同一制御・異なるstyle間の差を評価する。",
+        "- 回答は `responses/style_only_ab_responses_template.csv` に記入する。",
         "",
         "## 2) MOS評価",
         "- `manifests/mos_stimuli.csv` の音声を聴取し、自然さ(1-5)と感情適合度(1-5)を評価する。",
@@ -244,6 +286,8 @@ async def run_prepare(
     dsp_f0_extractor: str,
     samples_per_emotion: int,
     target_emotions_raw: str,
+    include_style_only_ab: bool,
+    style_only_mode: str,
     random_seed: int,
 ) -> dict[str, Any]:
     target_emotions = _parse_target_emotions(target_emotions_raw)
@@ -281,6 +325,7 @@ async def run_prepare(
     )
 
     baseline_client = VoicevoxClient(base_url=voicevox_url)
+    style_only_adapter = VoicevoxAdapter()
     if not await baseline_client.health_check():
         await pipeline.close()
         await baseline_client.close()
@@ -290,6 +335,7 @@ async def run_prepare(
     try:
         key_rows: list[dict[str, Any]] = []
         ab_rows: list[dict[str, Any]] = []
+        style_only_ab_rows: list[dict[str, Any]] = []
         mos_rows: list[dict[str, Any]] = []
         emotion_rows: list[dict[str, Any]] = []
 
@@ -345,6 +391,7 @@ async def run_prepare(
                         bridge_result.control_params,
                         ensure_ascii=False,
                     ),
+                    "style_only_mode": style_only_mode if include_style_only_ab else None,
                 },
             )
 
@@ -357,6 +404,83 @@ async def run_prepare(
                     "audio_b_path": str(b_path),
                 },
             )
+
+            if include_style_only_ab:
+                if style_only_mode != "mapped_vs_default":
+                    msg = f"Unsupported style-only mode: {style_only_mode}"
+                    raise ValueError(msg)
+
+                target_probs = {
+                    emotion: 1.0 if emotion == target_emotion else 0.0
+                    for emotion in JVNV_EMOTION_LABELS
+                }
+                mapped_style_id, mapped_style_name = style_selector.select(
+                    target_probs,
+                    character,
+                )
+
+                default_style_controlled = await _synthesize_with_control(
+                    client=baseline_client,
+                    adapter=style_only_adapter,
+                    text=text,
+                    style_id=default_style_id,
+                    control_params=bridge_result.control_params,
+                )
+                mapped_style_controlled = await _synthesize_with_control(
+                    client=baseline_client,
+                    adapter=style_only_adapter,
+                    text=text,
+                    style_id=int(mapped_style_id),
+                    control_params=bridge_result.control_params,
+                )
+
+                style_only_a_path = audio_dir / f"{sample_id}_style_only_A.wav"
+                style_only_b_path = audio_dir / f"{sample_id}_style_only_B.wav"
+                if rng.random() < 0.5:
+                    style_only_a_path.write_bytes(mapped_style_controlled)
+                    style_only_b_path.write_bytes(default_style_controlled)
+                    style_only_condition_a = "mapped"
+                    style_only_condition_b = "default"
+                else:
+                    style_only_a_path.write_bytes(default_style_controlled)
+                    style_only_b_path.write_bytes(mapped_style_controlled)
+                    style_only_condition_a = "default"
+                    style_only_condition_b = "mapped"
+
+                key_rows[-1]["style_only_audio_a_path"] = str(style_only_a_path)
+                key_rows[-1]["style_only_audio_b_path"] = str(style_only_b_path)
+                key_rows[-1]["style_only_condition_a"] = style_only_condition_a
+                key_rows[-1]["style_only_condition_b"] = style_only_condition_b
+                key_rows[-1]["style_only_mapped_style_id"] = int(mapped_style_id)
+                key_rows[-1]["style_only_mapped_style_name"] = str(mapped_style_name)
+                key_rows[-1]["style_only_default_style_id"] = int(default_style_id)
+                key_rows[-1]["style_only_default_style_name"] = str(default_style_name)
+                key_rows[-1]["style_only_same_style"] = int(mapped_style_id) == int(default_style_id)
+
+                style_only_ab_rows.append(
+                    {
+                        "sample_id": sample_id,
+                        "target_emotion": target_emotion,
+                        "text": text,
+                        "audio_a_path": str(style_only_a_path),
+                        "audio_b_path": str(style_only_b_path),
+                        "condition_a": style_only_condition_a,
+                        "condition_b": style_only_condition_b,
+                        "style_only_mode": style_only_mode,
+                        "mapped_style_id": int(mapped_style_id),
+                        "mapped_style_name": str(mapped_style_name),
+                        "default_style_id": int(default_style_id),
+                        "default_style_name": str(default_style_name),
+                        "same_style": int(mapped_style_id) == int(default_style_id),
+                        "control_params": json.dumps(
+                            {
+                                name: float(bridge_result.control_params[name])
+                                for name in CONTROL_PARAM_NAMES
+                            },
+                            ensure_ascii=False,
+                        ),
+                    },
+                )
             mos_rows.append(
                 {
                     "sample_id": sample_id,
@@ -391,6 +515,16 @@ async def run_prepare(
                 "bridge_style_name",
                 "bridge_is_fallback",
                 "bridge_control_params",
+                "style_only_mode",
+                "style_only_audio_a_path",
+                "style_only_audio_b_path",
+                "style_only_condition_a",
+                "style_only_condition_b",
+                "style_only_mapped_style_id",
+                "style_only_mapped_style_name",
+                "style_only_default_style_id",
+                "style_only_default_style_name",
+                "style_only_same_style",
             ],
         )
         _write_csv(
@@ -402,6 +536,26 @@ async def run_prepare(
                 "text",
                 "audio_a_path",
                 "audio_b_path",
+            ],
+        )
+        _write_csv(
+            manifests_dir / "style_only_ab_stimuli.csv",
+            style_only_ab_rows,
+            [
+                "sample_id",
+                "target_emotion",
+                "text",
+                "audio_a_path",
+                "audio_b_path",
+                "condition_a",
+                "condition_b",
+                "style_only_mode",
+                "mapped_style_id",
+                "mapped_style_name",
+                "default_style_id",
+                "default_style_name",
+                "same_style",
+                "control_params",
             ],
         )
         _write_csv(
@@ -417,6 +571,17 @@ async def run_prepare(
 
         _write_csv(
             responses_dir / "ab_responses_template.csv",
+            [],
+            [
+                "participant_id",
+                "sample_id",
+                "preferred",
+                "confidence_1to5",
+                "comment",
+            ],
+        )
+        _write_csv(
+            responses_dir / "style_only_ab_responses_template.csv",
             [],
             [
                 "participant_id",
@@ -457,6 +622,8 @@ async def run_prepare(
             "target_emotions": target_emotions,
             "samples_per_emotion": samples_per_emotion,
             "character": character,
+            "include_style_only_ab": include_style_only_ab,
+            "style_only_mode": style_only_mode,
             "default_style": {
                 "style_id": default_style_id,
                 "style_name": default_style_name,
@@ -464,6 +631,7 @@ async def run_prepare(
             "files": {
                 "stimuli_key": str(manifests_dir / "stimuli_key.csv"),
                 "ab_stimuli": str(manifests_dir / "ab_stimuli.csv"),
+                "style_only_ab_stimuli": str(manifests_dir / "style_only_ab_stimuli.csv"),
                 "mos_stimuli": str(manifests_dir / "mos_stimuli.csv"),
                 "emotion_identification_stimuli": str(
                     manifests_dir / "emotion_identification_stimuli.csv",
@@ -502,6 +670,8 @@ def main() -> None:
             dsp_f0_extractor=args.dsp_f0_extractor,
             samples_per_emotion=args.samples_per_emotion,
             target_emotions_raw=args.target_emotions,
+            include_style_only_ab=args.include_style_only_ab,
+            style_only_mode=args.style_only_mode,
             random_seed=args.random_seed,
         ),
     )
