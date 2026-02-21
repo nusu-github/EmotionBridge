@@ -33,7 +33,9 @@ class EmotionDSPProcessor:
         seed: int,
     ) -> bytes:
         params = (
-            dsp_params if isinstance(dsp_params, DSPControlVector) else DSPControlVector.from_dict(dsp_params)
+            dsp_params
+            if isinstance(dsp_params, DSPControlVector)
+            else DSPControlVector.from_dict(dsp_params)
         )
         if _is_effectively_zero(params):
             return audio_bytes

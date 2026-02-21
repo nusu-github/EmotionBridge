@@ -13,6 +13,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from emotionbridge.constants import COMMON6_CIRCUMPLEX_COORDS
+from emotionbridge.eval import (
+    build_evaluation_manifest,
+    build_gate_decision,
+    threshold_check,
+    write_evaluation_manifest,
+)
 from emotionbridge.scripts.common import (
     load_experiment_config,
     read_parquet,
@@ -208,6 +214,21 @@ def run_evaluation(
         and arousal_metrics["r2"] >= arousal_r2_threshold
         and valence_metrics["r2"] >= valence_r2_threshold,
     )
+    gate_decision = build_gate_decision(
+        [
+            threshold_check(
+                "categorical_silhouette",
+                categorical_silhouette,
+                config.evaluation.silhouette_go_threshold,
+                "<=",
+            ),
+            threshold_check("arousal_r2", arousal_metrics["r2"], arousal_r2_threshold, ">="),
+            threshold_check("valence_r2", valence_metrics["r2"], valence_r2_threshold, ">="),
+        ],
+        overall_pass=conditional_go,
+        label_pass="Conditional-Go",
+        label_fail="No-Go",
+    )
 
     result = {
         "input_path": str(source_path),
@@ -239,8 +260,9 @@ def run_evaluation(
             for emotion, values in centroids.to_dict(orient="index").items()
         },
         "decision": {
-            "label": "Conditional-Go" if conditional_go else "No-Go",
+            "label": gate_decision["label"],
             "continuous_axes_go": conditional_go,
+            "gate_decision": gate_decision,
             "message": (
                 "6感情クラスタリングはNo-Goだが連続軸回帰が閾値を満たすため、連続軸ベース設計として進行可能。"
                 if conditional_go
@@ -251,9 +273,6 @@ def run_evaluation(
 
     output_json = v01_dir / "v01_continuous_axes_metrics.json"
     output_md = v01_dir / "v01_continuous_axes_report.md"
-
-    with output_json.open("w", encoding="utf-8") as file:
-        json.dump(result, file, ensure_ascii=False, indent=2)
 
     lines = [
         "# V-01 Continuous Axes Report",
@@ -287,9 +306,44 @@ def run_evaluation(
     with output_md.open("w", encoding="utf-8") as file:
         file.write("\n".join(lines))
 
+    manifest = build_evaluation_manifest(
+        task="v01_continuous_axes",
+        gate=gate_decision,
+        summary={
+            "samples": len(df),
+            "num_features": len(feature_cols),
+            "categorical_silhouette": categorical_silhouette,
+            "arousal_r2": arousal_metrics["r2"],
+            "valence_r2": valence_metrics["r2"],
+            "arousal_mae": arousal_metrics["mae"],
+            "valence_mae": valence_metrics["mae"],
+        },
+        inputs={
+            "input_path": str(source_path),
+            "anchors_json": anchors_json,
+        },
+        artifacts={
+            "metrics_json": str(output_json),
+            "report_markdown": str(output_md),
+        },
+        metadata={
+            "arousal_r2_threshold": arousal_r2_threshold,
+            "valence_r2_threshold": valence_r2_threshold,
+        },
+    )
+    manifest_path = write_evaluation_manifest(
+        manifest,
+        v01_dir / "v01_continuous_axes_manifest.json",
+    )
+    result["evaluation_manifest_path"] = str(manifest_path)
+
+    with output_json.open("w", encoding="utf-8") as file:
+        json.dump(result, file, ensure_ascii=False, indent=2)
+
     return {
         "json": str(output_json),
         "report": str(output_md),
+        "manifest": str(manifest_path),
         "decision": result["decision"],
         "arousal_r2": arousal_metrics["r2"],
         "valence_r2": valence_metrics["r2"],

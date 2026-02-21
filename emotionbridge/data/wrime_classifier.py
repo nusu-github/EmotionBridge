@@ -43,7 +43,9 @@ def _load_all_records(data_config: DataConfig) -> tuple[Dataset, dict[str, int]]
         name=data_config.dataset_config_name,
     )
 
-    split_sizes = {str(split_name): len(split_dataset) for split_name, split_dataset in dataset.items()}
+    split_sizes = {
+        str(split_name): len(split_dataset) for split_name, split_dataset in dataset.items()
+    }
 
     split_names = list(dataset.keys())
     merged = concatenate_datasets([dataset[name] for name in split_names])
@@ -62,7 +64,9 @@ def _build_soft_targets(raw_targets: np.ndarray, temperature: float) -> np.ndarr
     return probs.astype(np.float32)
 
 
-def _prepare_dataset(data_config: DataConfig, merged_dataset: Dataset) -> tuple[Dataset, dict[str, Any]]:
+def _prepare_dataset(
+    data_config: DataConfig, merged_dataset: Dataset
+) -> tuple[Dataset, dict[str, Any]]:
     label_conversion = str(getattr(data_config, "label_conversion", "argmax"))
     if label_conversion not in {"argmax", "soft_label"}:
         msg = "data.label_conversion must be one of: argmax, soft_label"
@@ -154,7 +158,9 @@ def _prepare_dataset(data_config: DataConfig, merged_dataset: Dataset) -> tuple[
     )
 
     keep_mask = np.asarray(transformed["_keep"], dtype=bool)
-    removed_empty_count = int(np.sum(np.asarray(transformed["_removed_empty_text"], dtype=np.int64)))
+    removed_empty_count = int(
+        np.sum(np.asarray(transformed["_removed_empty_text"], dtype=np.int64))
+    )
     removed_low_intensity_count = int(
         np.sum(np.asarray(transformed["_removed_low_intensity"], dtype=np.int64)),
     )
@@ -197,8 +203,7 @@ def _split_stratified(
         labels = np.asarray(dataset["label"], dtype=np.int64)
         counts = np.bincount(labels, minlength=len(JVNV_EMOTION_LABELS))
         distribution = {
-            label: int(count)
-            for label, count in zip(JVNV_EMOTION_LABELS, counts, strict=True)
+            label: int(count) for label, count in zip(JVNV_EMOTION_LABELS, counts, strict=True)
         }
         msg = (
             f"Stratified split failed at '{split_name}'. "

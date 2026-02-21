@@ -9,6 +9,12 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.stats import ttest_rel
 from sklearn.metrics import calinski_harabasz_score, silhouette_score
 
+from emotionbridge.eval import (
+    build_evaluation_manifest,
+    build_gate_decision,
+    threshold_check,
+    write_evaluation_manifest,
+)
 from emotionbridge.scripts.common import (
     ensure_columns,
     load_experiment_config,
@@ -337,7 +343,13 @@ def run_evaluation(
 
     go_threshold = config.evaluation.silhouette_go_threshold
     go_result = silhouette > go_threshold
+    gate_decision = build_gate_decision(
+        [threshold_check("silhouette_score", silhouette, go_threshold, ">=")],
+        overall_pass=go_result,
+    )
 
+    metrics_json_path = output_dir / "v01_metrics.json"
+    report_path = output_dir / "v01_separation_report.md"
     results = {
         "input_path": str(source_path),
         "num_rows": len(df),
@@ -348,10 +360,10 @@ def run_evaluation(
         "pairwise": pairwise,
         "go_threshold": go_threshold,
         "go_result": go_result,
+        "decision": gate_decision["label"],
+        "gate_decision": gate_decision,
         "nv_impact": nv_impact,
     }
-
-    save_json(results, output_dir / "v01_metrics.json")
 
     report_lines = [
         "# V-01 Separation Report",
@@ -387,7 +399,34 @@ def run_evaluation(
         for feature, shift in nv_impact.get("top_changed_features", []):
             report_lines.append(f"- {feature}: mean|Δ|={shift:.6f}")
 
-    save_markdown("\n".join(report_lines), output_dir / "v01_separation_report.md")
+    save_markdown("\n".join(report_lines), report_path)
+
+    manifest = build_evaluation_manifest(
+        task="v01_separation",
+        gate=gate_decision,
+        summary={
+            "num_rows": len(df),
+            "num_features": len(feature_cols),
+            "silhouette_score": silhouette,
+            "calinski_harabasz_index": calinski_harabasz,
+            "permanova_pseudo_f": overall_permanova["pseudo_f"],
+            "permanova_p_value": overall_permanova["p_value"],
+        },
+        inputs={
+            "input_path": str(source_path),
+            "with_nv_input_path": str(with_nv_path) if with_nv_path else None,
+        },
+        artifacts={
+            "metrics_json": str(metrics_json_path),
+            "report_markdown": str(report_path),
+            "plots_dir": str(plots_dir),
+        },
+        metadata={"permutations": permutations, "pairwise_count": len(pairwise)},
+    )
+    manifest_path = write_evaluation_manifest(manifest, output_dir / "v01_separation_manifest.json")
+
+    results["evaluation_manifest_path"] = str(manifest_path)
+    save_json(results, metrics_json_path)
     return results
 
 

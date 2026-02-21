@@ -40,7 +40,9 @@ class TestBridgePipelineGeneratorLoader(unittest.TestCase):
             pt_path = Path(tmp_dir) / "best_generator.pt"
             pt_path.write_bytes(b"legacy")
 
-            with pytest.raises(ValueError, match="Legacy \\.pt generator checkpoints are not supported"):
+            with pytest.raises(
+                ValueError, match="Legacy \\.pt generator checkpoints are not supported"
+            ):
                 _load_generator_model_dir(pt_path, device="cpu")
 
     def test_raises_for_undetectable_config(self) -> None:

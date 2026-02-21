@@ -159,10 +159,7 @@ def _pair_manifest_entries(
         )
         raise ValueError(msg)
 
-    return [
-        (baseline_entries[key], candidate_entries[key])
-        for key in sorted(baseline_keys)
-    ]
+    return [(baseline_entries[key], candidate_entries[key]) for key in sorted(baseline_keys)]
 
 
 def _read_audio_mono(path: Path) -> tuple[np.ndarray, int]:
@@ -209,8 +206,7 @@ def _get_pesq_function():
         from pesq import pesq
     except ModuleNotFoundError as exc:
         msg = (
-            "pesq library is required for PESQ calculation. "
-            "Install dependencies and retry: uv sync"
+            "pesq library is required for PESQ calculation. Install dependencies and retry: uv sync"
         )
         raise RuntimeError(msg) from exc
     return pesq

@@ -9,6 +9,12 @@ from scipy.stats import wasserstein_distance
 from sklearn.metrics.pairwise import rbf_kernel
 from sklearn.neighbors import NearestNeighbors
 
+from emotionbridge.eval import (
+    boolean_check,
+    build_evaluation_manifest,
+    build_gate_decision,
+    write_evaluation_manifest,
+)
 from emotionbridge.scripts.common import (
     load_experiment_config,
     read_parquet,
@@ -271,7 +277,34 @@ def run_evaluation(
     )
     shrink = float(mean_before - mean_after) if raw_wasserstein else float("nan")
 
-    gate_pass = bool(raw_wasserstein and mean_after < mean_before)
+    has_raw_baseline = raw_wasserstein is not None
+    wasserstein_improved = bool(has_raw_baseline and np.isfinite(shrink) and shrink > 0.0)
+    gate_pass = wasserstein_improved
+
+    gate_checks = [
+        boolean_check(
+            "raw_baseline_available",
+            has_raw_baseline,
+            detail="raw JVNV/VOICEVOX features are required for before/after comparison",
+        ),
+        boolean_check(
+            "wasserstein_mean_improved",
+            wasserstein_improved,
+            detail=(
+                f"mean_wasserstein_before={mean_before:.6f}, "
+                f"mean_wasserstein_after={mean_after:.6f}"
+            ),
+        ),
+    ]
+    if np.isfinite(mmd_before) and np.isfinite(mmd_after):
+        gate_checks.append(
+            boolean_check(
+                "mmd_improved",
+                bool(mmd_after < mmd_before),
+                detail=f"mmd_before={mmd_before:.6f}, mmd_after={mmd_after:.6f}",
+            ),
+        )
+    gate_decision = build_gate_decision(gate_checks, overall_pass=gate_pass)
 
     combined = pd.concat(
         [
@@ -325,6 +358,8 @@ def run_evaluation(
             reverse=True,
         )[:15]
 
+    metrics_json_path = v03_dir / "v03_domain_gap_metrics.json"
+    report_path = v03_dir / "v03_domain_gap_report.md"
     results = {
         "jvnv_normalized": str(jvnv_norm_path),
         "voicevox_normalized": str(voice_norm_path),
@@ -338,12 +373,12 @@ def run_evaluation(
         "mmd_after": mmd_after,
         "overlap_ratio": overlap_ratio,
         "gate_pass": gate_pass,
+        "decision": gate_decision["label"],
+        "gate_decision": gate_decision,
         "by_emotion": by_emotion,
         "top_features_after": top_features_after,
         "top_shrunk_features": top_shrunk,
     }
-
-    save_json(results, v03_dir / "v03_domain_gap_metrics.json")
 
     report_lines = [
         "# V-03 Domain Gap Report",
@@ -358,7 +393,7 @@ def run_evaluation(
         f"- MMD before: {mmd_before:.6f}",
         f"- MMD after: {mmd_after:.6f}",
         f"- Overlap ratio: {overlap_ratio:.4f}",
-        f"- Gate result: {'Go' if gate_pass else 'No-Go'}",
+        f"- Gate result: {gate_decision['label']}",
         "",
         "## Emotion-wise Gap",
         "| Emotion | Mean Wasserstein | Median Wasserstein |",
@@ -388,7 +423,37 @@ def run_evaluation(
         for feature, shrink_value in top_shrunk:
             report_lines.append(f"- {feature}: {shrink_value:.6f}")
 
-    save_markdown("\n".join(report_lines), v03_dir / "v03_domain_gap_report.md")
+    save_markdown("\n".join(report_lines), report_path)
+
+    manifest = build_evaluation_manifest(
+        task="v03_domain_gap",
+        gate=gate_decision,
+        summary={
+            "num_common_features": len(common_features),
+            "wasserstein_mean_before": mean_before,
+            "wasserstein_mean_after": mean_after,
+            "mmd_before": mmd_before,
+            "mmd_after": mmd_after,
+            "overlap_ratio": overlap_ratio,
+        },
+        inputs={
+            "jvnv_normalized": str(jvnv_norm_path),
+            "voicevox_normalized": str(voice_norm_path),
+            "jvnv_raw": str(jvnv_raw_path) if jvnv_raw_path.exists() else None,
+            "voicevox_raw": str(voice_raw_path) if voice_raw_path.exists() else None,
+        },
+        artifacts={
+            "metrics_json": str(metrics_json_path),
+            "report_markdown": str(report_path),
+            "pca_plot": str(plots_dir / "v03_pca_integrated.png"),
+            "tsne_plot": str(plots_dir / "v03_tsne_integrated.png"),
+        },
+        metadata={"top_features_after": top_features_after},
+    )
+    manifest_path = write_evaluation_manifest(manifest, v03_dir / "v03_domain_gap_manifest.json")
+
+    results["evaluation_manifest_path"] = str(manifest_path)
+    save_json(results, metrics_json_path)
     return results
 
 

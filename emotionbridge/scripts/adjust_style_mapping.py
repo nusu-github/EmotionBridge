@@ -140,10 +140,7 @@ def _resolve_style_name(
     metadata = VOICEVOX_STYLE_METADATA.get(style_id)
     if metadata is not None:
         if metadata["character"] != character:
-            msg = (
-                f"style_id={style_id} belongs to '{metadata['character']}', "
-                f"not '{character}'"
-            )
+            msg = f"style_id={style_id} belongs to '{metadata['character']}', not '{character}'"
             raise ValueError(msg)
         return metadata["style_name"]
 

@@ -13,6 +13,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from emotionbridge.constants import COMMON6_CIRCUMPLEX_COORDS
+from emotionbridge.eval import (
+    boolean_check,
+    build_evaluation_manifest,
+    build_gate_decision,
+    write_evaluation_manifest,
+)
 from emotionbridge.scripts.common import (
     ensure_columns,
     load_experiment_config,
@@ -421,6 +427,29 @@ def run_evaluation(
         if gate_policy == "feature_and_av"
         else feature_gate_pass
     )
+    gate_checks = [
+        boolean_check(
+            "feature_gate",
+            feature_gate_pass,
+            detail=(f"responsive required axes count={len(responsive_required)} is less than 3"),
+        ),
+    ]
+    if av_alignment is not None:
+        gate_checks.append(
+            boolean_check(
+                "av_direction_gate",
+                av_gate_pass,
+                detail="A/V direction checks did not satisfy required constraints",
+            ),
+        )
+    gate_checks.append(
+        boolean_check(
+            "policy_gate",
+            gate_pass,
+            detail=f"gate_policy={gate_policy} yielded No-Go",
+        ),
+    )
+    gate_decision = build_gate_decision(gate_checks, overall_pass=gate_pass)
 
     top_features = (
         pearson_matrix.abs().max(axis=0).sort_values(ascending=False).head(25).index.tolist()
@@ -497,6 +526,7 @@ def run_evaluation(
         min_corr_threshold=0.05,
     )
     num_nonzero = sum(1 for w in feature_weights.values() if w > 0)
+    feature_weights_path = v02_dir / "feature_weights.json"
     save_json(
         {
             "version": "1.0",
@@ -506,9 +536,14 @@ def run_evaluation(
             "num_zero": len(feature_weights) - num_nonzero,
             "weights": feature_weights,
         },
-        v02_dir / "feature_weights.json",
+        feature_weights_path,
     )
 
+    metrics_json_path = v02_dir / "v02_responsiveness_metrics.json"
+    pearson_path = v02_dir / "v02_corr_pearson.parquet"
+    spearman_path = v02_dir / "v02_corr_spearman.parquet"
+    partial_path = v02_dir / "v02_corr_partial.parquet"
+    report_path = v02_dir / "v02_responsiveness_report.md"
     results = {
         "input_path": str(source_path),
         "num_rows": len(df),
@@ -523,13 +558,14 @@ def run_evaluation(
         "av_alignment": av_alignment,
         "av_gate_pass": av_gate_pass,
         "gate_pass": gate_pass,
-        "feature_weights_path": str(v02_dir / "feature_weights.json"),
+        "decision": gate_decision["label"],
+        "gate_decision": gate_decision,
+        "feature_weights_path": str(feature_weights_path),
     }
-    save_json(results, v02_dir / "v02_responsiveness_metrics.json")
 
-    pearson_matrix.to_parquet(v02_dir / "v02_corr_pearson.parquet")
-    spearman_matrix.to_parquet(v02_dir / "v02_corr_spearman.parquet")
-    partial_corr.to_parquet(v02_dir / "v02_corr_partial.parquet")
+    pearson_matrix.to_parquet(pearson_path)
+    spearman_matrix.to_parquet(spearman_path)
+    partial_corr.to_parquet(partial_path)
 
     report_lines = [
         "# V-02 Responsiveness Report",
@@ -570,7 +606,38 @@ def run_evaluation(
                 f"| {control} | {check['axis']} | {check['expected_sign']} | {check['threshold']:.2f} | {check['score']:.4f} | {check['pass']} |",
             )
 
-    save_markdown("\n".join(report_lines), v02_dir / "v02_responsiveness_report.md")
+    save_markdown("\n".join(report_lines), report_path)
+
+    manifest = build_evaluation_manifest(
+        task="v02_responsiveness",
+        gate=gate_decision,
+        summary={
+            "num_rows": len(df),
+            "num_features": len(feature_cols),
+            "responsive_required_axes": len(responsive_required),
+            "gate_policy": gate_policy,
+        },
+        inputs={"input_path": str(source_path)},
+        artifacts={
+            "metrics_json": str(metrics_json_path),
+            "report_markdown": str(report_path),
+            "pearson_parquet": str(pearson_path),
+            "spearman_parquet": str(spearman_path),
+            "partial_parquet": str(partial_path),
+            "feature_weights_json": str(feature_weights_path),
+        },
+        metadata={
+            "control_columns": control_cols,
+            "required_axes": required_axes,
+            "responsive_required_axes": responsive_required,
+        },
+    )
+    manifest_path = write_evaluation_manifest(
+        manifest, v02_dir / "v02_responsiveness_manifest.json"
+    )
+
+    results["evaluation_manifest_path"] = str(manifest_path)
+    save_json(results, metrics_json_path)
     return results
 
 

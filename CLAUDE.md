@@ -47,10 +47,17 @@ uv run python -m emotionbridge.scripts.extract_egemaps --config configs/experime
 uv run python -m emotionbridge.scripts.extract_egemaps --config configs/experiment_config.yaml --source voicevox
 uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source jvnv
 uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source voicevox
-uv run python -m emotionbridge.scripts.evaluate_responsiveness --config configs/experiment_config.yaml
+uv run python main.py evaluate separation --config configs/experiment_config.yaml
+uv run python main.py evaluate continuous-axes --config configs/experiment_config.yaml
+uv run python main.py evaluate responsiveness --config configs/experiment_config.yaml
 uv run python -m emotionbridge.scripts.align_domains --config configs/experiment_config.yaml
 uv run python -m emotionbridge.scripts.match_emotion_params --config configs/experiment_config.yaml
-uv run python -m emotionbridge.scripts.evaluate_domain_gap --config configs/experiment_config.yaml
+uv run python main.py evaluate domain-gap --config configs/experiment_config.yaml
+# 評価マニフェスト（共通スキーマ）:
+# - artifacts/prosody/v01/v01_separation_manifest.json
+# - artifacts/prosody/v01/v01_continuous_axes_manifest.json
+# - artifacts/prosody/v02/v02_responsiveness_manifest.json
+# - artifacts/prosody/v03/v03_domain_gap_manifest.json
 uv run python -m emotionbridge.scripts.prepare_generator_teacher
 uv run python -m emotionbridge.scripts.train_generator --config configs/generator.yaml
 uv run python -m emotionbridge.scripts.build_style_mapping --config configs/experiment_config.yaml
@@ -89,7 +96,7 @@ uv run python -m emotionbridge.scripts.analyze_subjective_eval \
   --eval-dir artifacts/prosody/subjective_eval/pilot_v01
 
 # 定量評価（Roundtrip: PESQ / MCD / F0 RMSE）
-uv run python -m emotionbridge.scripts.evaluate_roundtrip \
+uv run python main.py evaluate roundtrip \
   --baseline-manifest demo/v2/manifest.json \
   --candidate-manifest demo/v2-dsp/manifest.json \
   --output-dir artifacts/prosody/roundtrip_eval/v2_dsp

@@ -133,8 +133,14 @@ uv run python -m emotionbridge.scripts.extract_egemaps --config configs/experime
 uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source jvnv
 uv run python -m emotionbridge.scripts.normalize_features --config configs/experiment_config.yaml --source voicevox
 
+# 感情分離性評価（V-01）
+uv run python main.py evaluate separation --config configs/experiment_config.yaml
+
+# 連続軸評価（V-01, Arousal/Valence）
+uv run python main.py evaluate continuous-axes --config configs/experiment_config.yaml
+
 # 特徴応答性評価（feature_weights.json 出力）
-uv run python -m emotionbridge.scripts.evaluate_responsiveness --config configs/experiment_config.yaml
+uv run python main.py evaluate responsiveness --config configs/experiment_config.yaml
 
 # クロスドメイン整合
 uv run python -m emotionbridge.scripts.align_domains --config configs/experiment_config.yaml
@@ -143,7 +149,13 @@ uv run python -m emotionbridge.scripts.align_domains --config configs/experiment
 uv run python -m emotionbridge.scripts.match_emotion_params --config configs/experiment_config.yaml
 
 # ドメインギャップ評価
-uv run python -m emotionbridge.scripts.evaluate_domain_gap --config configs/experiment_config.yaml
+uv run python main.py evaluate domain-gap --config configs/experiment_config.yaml
+
+# 評価マニフェスト（共通スキーマ）
+# - artifacts/prosody/v01/v01_separation_manifest.json
+# - artifacts/prosody/v01/v01_continuous_axes_manifest.json
+# - artifacts/prosody/v02/v02_responsiveness_manifest.json
+# - artifacts/prosody/v03/v03_domain_gap_manifest.json
 
 # 教師表作成
 uv run python -m emotionbridge.scripts.prepare_generator_teacher
@@ -226,7 +238,7 @@ uv run python -m emotionbridge.scripts.analyze_subjective_eval \
 `demo/v2`（baseline）と`demo/v2-dsp`（candidate）を比較して、PESQ / MCD / F0 RMSE を算出する。
 
 ```bash
-uv run python -m emotionbridge.scripts.evaluate_roundtrip \
+uv run python main.py evaluate roundtrip \
   --baseline-manifest demo/v2/manifest.json \
   --candidate-manifest demo/v2-dsp/manifest.json \
   --output-dir artifacts/prosody/roundtrip_eval/v2_dsp
@@ -247,7 +259,7 @@ Go/No-Go閾値:
 Harvest比較（`demo/v2-dsp-harvest`）:
 
 ```bash
-uv run python -m emotionbridge.scripts.evaluate_roundtrip \
+uv run python main.py evaluate roundtrip \
   --baseline-manifest demo/v2/manifest.json \
   --candidate-manifest demo/v2-dsp-harvest/manifest.json \
   --output-dir artifacts/prosody/roundtrip_eval/v2_dsp_harvest

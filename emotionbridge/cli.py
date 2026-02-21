@@ -146,6 +146,131 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     bridge_parser.add_argument("--device", default="cuda", help="cuda or cpu")
 
+    # --- 評価コマンド ---
+
+    evaluate_parser = subparsers.add_parser(
+        "evaluate",
+        help="Run evaluation pipelines",
+    )
+    eval_subparsers = evaluate_parser.add_subparsers(dest="eval_command", required=True)
+
+    eval_roundtrip_parser = eval_subparsers.add_parser(
+        "roundtrip",
+        help="Roundtrip定量評価（PESQ/MCD/F0 RMSE）",
+    )
+    eval_roundtrip_parser.add_argument(
+        "--baseline-manifest",
+        default="demo/v2/manifest.json",
+        help="baseline側 manifest JSON",
+    )
+    eval_roundtrip_parser.add_argument(
+        "--candidate-manifest",
+        default="demo/v2-dsp/manifest.json",
+        help="candidate側 manifest JSON",
+    )
+    eval_roundtrip_parser.add_argument(
+        "--output-dir",
+        default="artifacts/prosody/roundtrip_eval/v2_dsp",
+        help="評価レポート出力先ディレクトリ",
+    )
+
+    eval_resp_parser = eval_subparsers.add_parser(
+        "responsiveness",
+        help="V-02 VOICEVOX 韻律応答性評価",
+    )
+    eval_resp_parser.add_argument(
+        "--config",
+        default="configs/experiment_config.yaml",
+        help="実験設定ファイル",
+    )
+    eval_resp_parser.add_argument(
+        "--input-path",
+        default=None,
+        help="正規化済みVOICEVOX特徴量parquet",
+    )
+    eval_resp_parser.add_argument(
+        "--gate-policy",
+        choices=["feature_only", "feature_and_av"],
+        default="feature_only",
+        help="Go/No-Go 判定ポリシー",
+    )
+
+    eval_domain_gap_parser = eval_subparsers.add_parser(
+        "domain-gap",
+        help="V-03 ドメインギャップ評価",
+    )
+    eval_domain_gap_parser.add_argument(
+        "--config",
+        default="configs/experiment_config.yaml",
+        help="実験設定ファイル",
+    )
+    eval_domain_gap_parser.add_argument("--jvnv-normalized", default=None, help="JVNV 正規化特徴量")
+    eval_domain_gap_parser.add_argument(
+        "--voicevox-normalized",
+        default=None,
+        help="VOICEVOX 正規化特徴量",
+    )
+    eval_domain_gap_parser.add_argument("--jvnv-raw", default=None, help="JVNV 生特徴量")
+    eval_domain_gap_parser.add_argument("--voicevox-raw", default=None, help="VOICEVOX 生特徴量")
+
+    eval_sep_parser = eval_subparsers.add_parser(
+        "separation",
+        help="V-01 感情分離性評価",
+    )
+    eval_sep_parser.add_argument(
+        "--config",
+        default="configs/experiment_config.yaml",
+        help="実験設定ファイル",
+    )
+    eval_sep_parser.add_argument(
+        "--input-path",
+        default=None,
+        help="正規化済みJVNV特徴量parquet",
+    )
+    eval_sep_parser.add_argument(
+        "--with-nv-input-path",
+        default=None,
+        help="NV除外なし版（比較用、任意）",
+    )
+    eval_sep_parser.add_argument(
+        "--permutations",
+        type=int,
+        default=499,
+        help="PERMANOVA permutation回数",
+    )
+
+    eval_axes_parser = eval_subparsers.add_parser(
+        "continuous-axes",
+        help="V-01 連続軸（Arousal/Valence）評価",
+    )
+    eval_axes_parser.add_argument(
+        "--config",
+        default="configs/experiment_config.yaml",
+        help="実験設定ファイル",
+    )
+    eval_axes_parser.add_argument(
+        "--input-path",
+        default=None,
+        help="JVNV 正規化特徴量 parquet",
+    )
+    eval_axes_parser.add_argument(
+        "--anchors-json",
+        default=None,
+        help="感情アンカー値を上書きする JSON ファイル",
+    )
+    eval_axes_parser.add_argument(
+        "--arousal-r2-threshold",
+        type=float,
+        default=0.30,
+        help="Conditional Go 判定の arousal R2 下限",
+    )
+    eval_axes_parser.add_argument(
+        "--valence-r2-threshold",
+        type=float,
+        default=0.15,
+        help="Conditional Go 判定の valence R2 下限",
+    )
+
     return parser
 
 
@@ -309,6 +434,128 @@ def _cmd_bridge(
     asyncio.run(_run())
 
 
+def _cmd_evaluate_roundtrip(
+    baseline_manifest: str,
+    candidate_manifest: str,
+    output_dir: str,
+) -> None:
+    from emotionbridge.scripts.evaluate_roundtrip import run_evaluation
+
+    result = run_evaluation(
+        baseline_manifest=baseline_manifest,
+        candidate_manifest=candidate_manifest,
+        output_dir=output_dir,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def _cmd_evaluate_responsiveness(
+    config: str,
+    input_path: str | None,
+    gate_policy: str,
+) -> None:
+    from emotionbridge.scripts.evaluate_responsiveness import run_evaluation
+
+    result = run_evaluation(config, input_path, gate_policy)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def _cmd_evaluate_domain_gap(
+    config: str,
+    jvnv_normalized: str | None,
+    voicevox_normalized: str | None,
+    jvnv_raw: str | None,
+    voicevox_raw: str | None,
+) -> None:
+    from emotionbridge.scripts.evaluate_domain_gap import run_evaluation
+
+    result = run_evaluation(
+        config_path=config,
+        jvnv_normalized=jvnv_normalized,
+        voicevox_normalized=voicevox_normalized,
+        jvnv_raw=jvnv_raw,
+        voicevox_raw=voicevox_raw,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def _cmd_evaluate_separation(
+    config: str,
+    input_path: str | None,
+    with_nv_input_path: str | None,
+    permutations: int,
+) -> None:
+    from emotionbridge.scripts.evaluate_separation import run_evaluation
+
+    result = run_evaluation(
+        config_path=config,
+        input_path=input_path,
+        with_nv_input_path=with_nv_input_path,
+        permutations=permutations,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def _cmd_evaluate_continuous_axes(
+    config: str,
+    input_path: str | None,
+    anchors_json: str | None,
+    arousal_r2_threshold: float,
+    valence_r2_threshold: float,
+) -> None:
+    from emotionbridge.scripts.evaluate_continuous_axes import run_evaluation
+
+    result = run_evaluation(
+        config_path=config,
+        input_path=input_path,
+        anchors_json=anchors_json,
+        arousal_r2_threshold=arousal_r2_threshold,
+        valence_r2_threshold=valence_r2_threshold,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def _dispatch_evaluate(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    handlers = {
+        "roundtrip": lambda: _cmd_evaluate_roundtrip(
+            args.baseline_manifest,
+            args.candidate_manifest,
+            args.output_dir,
+        ),
+        "responsiveness": lambda: _cmd_evaluate_responsiveness(
+            args.config,
+            args.input_path,
+            args.gate_policy,
+        ),
+        "domain-gap": lambda: _cmd_evaluate_domain_gap(
+            args.config,
+            args.jvnv_normalized,
+            args.voicevox_normalized,
+            args.jvnv_raw,
+            args.voicevox_raw,
+        ),
+        "separation": lambda: _cmd_evaluate_separation(
+            args.config,
+            args.input_path,
+            args.with_nv_input_path,
+            args.permutations,
+        ),
+        "continuous-axes": lambda: _cmd_evaluate_continuous_axes(
+            args.config,
+            args.input_path,
+            args.anchors_json,
+            args.arousal_r2_threshold,
+            args.valence_r2_threshold,
+        ),
+    }
+
+    handler = handlers.get(args.eval_command)
+    if handler is None:
+        parser.error("Unknown evaluate command")
+        return
+    handler()
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -318,23 +565,13 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
-    if args.command == "train":
-        _cmd_train(args.config)
-        return
-    if args.command == "analyze-data":
-        _cmd_analyze_data(args.config, args.output_dir)
-        return
-    if args.command == "encode":
-        _cmd_encode(args.checkpoint, args.text, args.device)
-        return
-    if args.command == "generate-samples":
-        _cmd_generate_samples(args.config)
-        return
-    if args.command == "list-speakers":
-        _cmd_list_speakers(args.config)
-        return
-    if args.command == "bridge":
-        _cmd_bridge(
+    handlers = {
+        "train": lambda: _cmd_train(args.config),
+        "analyze-data": lambda: _cmd_analyze_data(args.config, args.output_dir),
+        "encode": lambda: _cmd_encode(args.checkpoint, args.text, args.device),
+        "generate-samples": lambda: _cmd_generate_samples(args.config),
+        "list-speakers": lambda: _cmd_list_speakers(args.config),
+        "bridge": lambda: _cmd_bridge(
             args.text,
             args.output,
             args.character,
@@ -347,6 +584,12 @@ def main() -> None:
             args.dsp_features_path,
             args.dsp_f0_extractor,
             args.device,
-        )
+        ),
+        "evaluate": lambda: _dispatch_evaluate(args, parser),
+    }
+
+    handler = handlers.get(args.command)
+    if handler is None:
+        parser.error("Unknown command")
         return
-    parser.error("Unknown command")
+    handler()

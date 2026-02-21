@@ -46,6 +46,7 @@ class EmotionEncoder:
         # ラベル名のリストを保持（JVNV の順序を期待）
         id2label = getattr(self.model.config, "id2label", None)
         if isinstance(id2label, dict) and id2label:
+
             def _sort_key(item: tuple[Any, str]) -> tuple[int, int | str]:
                 key, _value = item
                 if isinstance(key, int):
@@ -74,7 +75,9 @@ class EmotionEncoder:
 
         missing_labels = [label for label in self._label_names if label not in score_by_label]
         if not missing_labels:
-            return np.asarray([score_by_label[label] for label in self._label_names], dtype=np.float32)
+            return np.asarray(
+                [score_by_label[label] for label in self._label_names], dtype=np.float32
+            )
 
         if all(label.startswith("LABEL_") for label in score_by_label):
             sorted_pairs = sorted(
