@@ -74,6 +74,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="bridgeフォールバック閾値",
     )
     parser.add_argument(
+        "--enable-dsp",
+        action="store_true",
+        help="WORLDベースDSP後処理を有効化する",
+    )
+    parser.add_argument(
+        "--dsp-features-path",
+        default="artifacts/prosody/v01/jvnv_egemaps_normalized.parquet",
+        help="EmotionDSPMapperの初期化に使うJVNV eGeMAPS parquet",
+    )
+    parser.add_argument(
         "--samples-per-emotion",
         type=int,
         default=1,
@@ -223,6 +233,8 @@ async def run_prepare(
     voicevox_url: str,
     device: str,
     fallback_threshold: float,
+    enable_dsp: bool,
+    dsp_features_path: str,
     samples_per_emotion: int,
     target_emotions_raw: str,
     random_seed: int,
@@ -255,6 +267,8 @@ async def run_prepare(
         voicevox_url=voicevox_url,
         character=character,
         fallback_threshold=fallback_threshold,
+        enable_dsp=enable_dsp,
+        dsp_features_path=dsp_features_path,
         device=device,
     )
 
@@ -475,6 +489,8 @@ def main() -> None:
             voicevox_url=args.voicevox_url,
             device=args.device,
             fallback_threshold=args.fallback_threshold,
+            enable_dsp=args.enable_dsp,
+            dsp_features_path=args.dsp_features_path,
             samples_per_emotion=args.samples_per_emotion,
             target_emotions_raw=args.target_emotions,
             random_seed=args.random_seed,

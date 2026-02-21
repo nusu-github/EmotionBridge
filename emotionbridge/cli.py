@@ -128,6 +128,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0.3,
         help="Fallback threshold for max emotion probability",
     )
+    bridge_parser.add_argument(
+        "--enable-dsp",
+        action="store_true",
+        help="Enable WORLD-based DSP post-processing",
+    )
+    bridge_parser.add_argument(
+        "--dsp-features-path",
+        default="artifacts/prosody/v01/jvnv_egemaps_normalized.parquet",
+        help="Path to JVNV eGeMAPS parquet used for DSP mapper initialization",
+    )
     bridge_parser.add_argument("--device", default="cuda", help="cuda or cpu")
 
     return parser
@@ -249,6 +259,8 @@ def _cmd_bridge(
     style_mapping: str,
     voicevox_url: str,
     fallback_threshold: float,
+    enable_dsp: bool,
+    dsp_features_path: str,
     device: str,
 ) -> None:
     from emotionbridge.inference import create_pipeline
@@ -261,6 +273,8 @@ def _cmd_bridge(
             voicevox_url=voicevox_url,
             character=character,
             fallback_threshold=fallback_threshold,
+            enable_dsp=enable_dsp,
+            dsp_features_path=dsp_features_path,
             device=device,
         )
         try:
@@ -273,6 +287,9 @@ def _cmd_bridge(
             "dominant_emotion": result.dominant_emotion,
             "emotion_probs": result.emotion_probs,
             "control_params": result.control_params,
+            "dsp_params": result.dsp_params,
+            "dsp_applied": result.dsp_applied,
+            "dsp_seed": result.dsp_seed,
             "style_id": result.style_id,
             "style_name": result.style_name,
             "confidence": result.confidence,
@@ -318,6 +335,8 @@ def main() -> None:
             args.style_mapping,
             args.voicevox_url,
             args.fallback_threshold,
+            args.enable_dsp,
+            args.dsp_features_path,
             args.device,
         )
         return

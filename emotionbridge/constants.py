@@ -17,6 +17,15 @@ CONTROL_PARAM_NAMES: list[str] = [
 ]
 NUM_CONTROL_PARAMS = len(CONTROL_PARAM_NAMES)
 
+# DSP後処理制御空間パラメータ
+DSP_PARAM_NAMES: list[str] = [
+    "jitter_amount",
+    "shimmer_amount",
+    "aperiodicity_shift",
+    "spectral_tilt_shift",
+]
+NUM_DSP_PARAMS = len(DSP_PARAM_NAMES)
+
 # JVNV感情ラベル
 JVNV_EMOTION_LABELS = ["anger", "disgust", "fear", "happy", "sad", "surprise"]
 NUM_JVNV_EMOTIONS = len(JVNV_EMOTION_LABELS)

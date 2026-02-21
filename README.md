@@ -11,7 +11,8 @@ EmotionBridge は日本語テキストから感情を分類し、その結果に
   --> Phase 0 感情分類（BERT 6クラス）
     --> DeterministicMixer（6D --> 5D制御パラメータ）
       --> VOICEVOX TTS（スタイル選択 + 韻律制御）
-        --> 感情音声
+        --> (任意) DSP後処理（WORLDベース声質制御）
+          --> 感情音声
 ```
 
 ### フェーズ構成
@@ -64,6 +65,16 @@ uv run python main.py bridge \
 ```
 
 感情分類結果、制御パラメータ、選択されたスタイル情報が JSON で出力され、音声ファイルが保存される。
+
+DSP後処理を有効化する場合:
+
+```bash
+uv run python main.py bridge \
+  --text "今日は楽しかった！" \
+  --output output_dsp.wav \
+  --character zundamon \
+  --enable-dsp
+```
 
 ## CLI リファレンス
 
@@ -164,7 +175,9 @@ uv run python main.py bridge \
   --character zundamon \
   --classifier-checkpoint artifacts/classifier/checkpoints/best_model \
   --generator-checkpoint artifacts/generator/checkpoints/best_generator.pt \
-  --style-mapping artifacts/prosody/style_mapping.json
+  --style-mapping artifacts/prosody/style_mapping.json \
+  --enable-dsp \
+  --dsp-features-path artifacts/prosody/v01/jvnv_egemaps_normalized.parquet
 ```
 
 主要オプション:
@@ -173,8 +186,15 @@ uv run python main.py bridge \
 | ---------------------- | ------------------------ | -------------------------------------------------------------- |
 | `--character`          | `zundamon`               | スタイルマッピング内のキャラクターキー                         |
 | `--fallback-threshold` | `0.3`                    | 感情確信度がこの値未満の場合デフォルトスタイルにフォールバック |
+| `--enable-dsp`         | `False`                  | WORLDベースのDSP後処理を有効化                                  |
+| `--dsp-features-path`  | `artifacts/prosody/v01/jvnv_egemaps_normalized.parquet` | EmotionDSPMapper 初期化用の特徴量parquet |
 | `--device`             | `cuda`                   | 推論デバイス（`cuda` または `cpu`）                            |
 | `--voicevox-url`       | `http://127.0.0.1:50021` | VOICEVOX Engine URL（`http://` / `https://`）                  |
+
+`bridge` のJSON出力には以下のDSP関連項目が追加される:
+- `dsp_params`: 適用したDSP制御量（未適用時は `null`）
+- `dsp_applied`: DSPが適用されたかどうか
+- `dsp_seed`: 決定論シード（未適用時は `null`）
 
 ### 主観評価
 
@@ -217,6 +237,8 @@ pipeline = await create_pipeline(
     voicevox_url="https://your-voicevox.example.com",
     character="zundamon",
     fallback_threshold=0.3,
+    enable_dsp=True,
+    dsp_features_path="artifacts/prosody/v01/jvnv_egemaps_normalized.parquet",
     device="cuda",
 )
 
@@ -227,6 +249,7 @@ result = await pipeline.synthesize(
 
 print(result.dominant_emotion)  # "happy"
 print(result.control_params)   # {"pitch_shift": 0.12, ...}
+print(result.dsp_params)       # {"jitter_amount": 0.18, ...} or None
 print(result.style_name)       # "うれしい"
 
 await pipeline.close()

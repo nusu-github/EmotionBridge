@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
+import hashlib
+import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
@@ -13,6 +17,9 @@ from emotionbridge.tts.adapter import VoicevoxAdapter
 from emotionbridge.tts.types import ControlVector
 from emotionbridge.tts.voicevox_client import VoicevoxClient
 
+if TYPE_CHECKING:
+    from emotionbridge.dsp import EmotionDSPMapper, EmotionDSPProcessor
+
 
 @dataclass(frozen=True, slots=True)
 class SynthesisResult:
@@ -21,6 +28,9 @@ class SynthesisResult:
     emotion_probs: dict[str, float]
     dominant_emotion: str
     control_params: dict[str, float]
+    dsp_params: dict[str, float] | None
+    dsp_applied: bool
+    dsp_seed: int | None
     style_id: int
     style_name: str
     confidence: float
@@ -34,8 +44,6 @@ class RuleBasedStyleSelector:
         if not path.exists():
             msg = f"style mapping not found: {path}"
             raise FileNotFoundError(msg)
-
-        import json
 
         with path.open("r", encoding="utf-8") as file:
             payload = json.load(file)
@@ -78,11 +86,7 @@ class RuleBasedStyleSelector:
 
 
 class EmotionBridgePipeline:
-    """テキストから感情音声を生成する統合パイプライン。
-
-    テキスト感情分類 → 制御パラメータ生成 → スタイル選択 → VOICEVOX合成
-    の一連の処理を束ねる。信頼度が低い場合はフォールバックスタイルを使用する。
-    """
+    """テキストから感情音声を生成する統合パイプライン。"""
 
     def __init__(
         self,
@@ -95,6 +99,9 @@ class EmotionBridgePipeline:
         adapter: VoicevoxAdapter,
         character: str,
         fallback_threshold: float,
+        dsp_enabled: bool = False,
+        dsp_mapper: EmotionDSPMapper | None = None,
+        dsp_processor: EmotionDSPProcessor | None = None,
     ) -> None:
         if not classifier.is_classifier:
             msg = "EmotionBridgePipeline requires classifier checkpoint"
@@ -108,6 +115,9 @@ class EmotionBridgePipeline:
         self._adapter = adapter
         self._character = character
         self._fallback_threshold = fallback_threshold
+        self._dsp_enabled = dsp_enabled
+        self._dsp_mapper = dsp_mapper
+        self._dsp_processor = dsp_processor
 
     async def close(self) -> None:
         await self._voicevox.close()
@@ -136,6 +146,28 @@ class EmotionBridgePipeline:
             pred = self._generator(tensor).squeeze(0).detach().cpu().numpy()
         pred = np.clip(pred, -1.0, 1.0)
         return ControlVector.from_numpy(pred.astype(np.float32))
+
+    @staticmethod
+    def _build_dsp_seed(
+        *,
+        text: str,
+        style_id: int,
+        dominant_emotion: str,
+        dsp_params: dict[str, float],
+    ) -> int:
+        payload = json.dumps(
+            {
+                "text": text,
+                "style_id": style_id,
+                "dominant_emotion": dominant_emotion,
+                "dsp_params": dsp_params,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        digest = hashlib.blake2b(payload.encode("utf-8"), digest_size=8).digest()
+        return int.from_bytes(digest[:4], byteorder="big", signed=False)
 
     async def synthesize(
         self,
@@ -166,6 +198,31 @@ class EmotionBridgePipeline:
         modified = self._adapter.apply(query, control)
         audio_bytes = await self._voicevox.synthesis(modified, speaker_id=style_id)
 
+        dsp_params: dict[str, float] | None = None
+        dsp_applied = False
+        dsp_seed: int | None = None
+
+        if self._dsp_enabled and not is_fallback:
+            if self._dsp_mapper is None or self._dsp_processor is None:
+                msg = "DSP is enabled but mapper or processor is not initialized"
+                raise RuntimeError(msg)
+
+            dsp_vector = self._dsp_mapper.generate(probs_common6)
+            dsp_params = dsp_vector.to_dict()
+            dsp_seed = self._build_dsp_seed(
+                text=text,
+                style_id=style_id,
+                dominant_emotion=dominant_emotion,
+                dsp_params=dsp_params,
+            )
+
+            try:
+                audio_bytes = self._dsp_processor.process_bytes(audio_bytes, dsp_vector, dsp_seed)
+            except Exception as exc:
+                msg = f"DSP processing failed: {exc}"
+                raise RuntimeError(msg) from exc
+            dsp_applied = True
+
         saved_path: Path | None = None
         if output_path is not None:
             saved_path = Path(output_path)
@@ -185,6 +242,9 @@ class EmotionBridgePipeline:
                     strict=True,
                 )
             },
+            dsp_params=dsp_params,
+            dsp_applied=dsp_applied,
+            dsp_seed=dsp_seed,
             style_id=style_id,
             style_name=style_name,
             confidence=confidence,
@@ -192,6 +252,7 @@ class EmotionBridgePipeline:
             metadata={
                 "character": self._character,
                 "fallback_threshold": float(self._fallback_threshold),
+                "dsp_enabled": bool(self._dsp_enabled),
             },
         )
 
@@ -201,12 +262,7 @@ def _load_generator_checkpoint(
     *,
     device: str,
 ) -> tuple[nn.Module, torch.device]:
-    """チェックポイントからジェネレータモデルをロードする。
-
-    checkpoint 内の model_type フィールドで自動判別する:
-    - "deterministic_mixer": DeterministicMixer（教師表の線形混合）
-    - "parameter_generator": ParameterGenerator（NN版）
-    """
+    """チェックポイントからジェネレータモデルをロードする。"""
     path = Path(checkpoint_path)
     if not path.exists():
         msg = f"generator checkpoint not found: {path}"
@@ -264,12 +320,10 @@ async def create_pipeline(
     character: str,
     fallback_threshold: float,
     device: str,
+    enable_dsp: bool = False,
+    dsp_features_path: str | Path = "artifacts/prosody/v01/jvnv_egemaps_normalized.parquet",
 ) -> EmotionBridgePipeline:
-    """EmotionBridgePipeline を構築するファクトリ関数。
-
-    各コンポーネント（分類器・ジェネレータ・スタイル選択・VOICEVOX）を
-    初期化し、VOICEVOX Engine への疫通確認後にパイプラインを返す。
-    """
+    """EmotionBridgePipeline を構築するファクトリ関数。"""
     classifier = EmotionEncoder(str(classifier_checkpoint), device=device)
     if not classifier.is_classifier:
         msg = "bridge requires a classifier checkpoint for --classifier-checkpoint"
@@ -290,6 +344,14 @@ async def create_pipeline(
         raise ConnectionError(msg)
 
     adapter = VoicevoxAdapter()
+    dsp_mapper: EmotionDSPMapper | None = None
+    dsp_processor: EmotionDSPProcessor | None = None
+
+    if enable_dsp:
+        from emotionbridge.dsp import EmotionDSPMapper, EmotionDSPProcessor
+
+        dsp_mapper = EmotionDSPMapper(features_path=dsp_features_path)
+        dsp_processor = EmotionDSPProcessor()
 
     return EmotionBridgePipeline(
         classifier=classifier,
@@ -300,4 +362,7 @@ async def create_pipeline(
         adapter=adapter,
         character=character,
         fallback_threshold=fallback_threshold,
+        dsp_enabled=enable_dsp,
+        dsp_mapper=dsp_mapper,
+        dsp_processor=dsp_processor,
     )
