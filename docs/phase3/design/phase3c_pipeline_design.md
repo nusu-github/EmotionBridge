@@ -346,7 +346,7 @@ synthesize(text: str) の処理フロー:
 async def create_pipeline(
     *,
     classifier_checkpoint: str | Path = "artifacts/phase3/checkpoints/classifier_best.pt",
-    generator_checkpoint: str | Path = "artifacts/phase3/checkpoints/generator_best.pt",
+    generator_model_dir: str | Path = "artifacts/phase3/checkpoints/generator_best",
     style_mapping: str | Path = "artifacts/phase3/style_mapping.json",
     voicevox_url: str = "http://localhost:50021",
     character: str = "zundamon",
@@ -363,7 +363,7 @@ async def create_pipeline(
     classifier = EmotionClassifier(str(classifier_checkpoint), device=device)
 
     # 2. パラメータ生成器のロード
-    generator = ParameterGenerator.load(str(generator_checkpoint), device=device)
+    generator = load_generator_model_dir(str(generator_model_dir), device=device)
 
     # 3. スタイル選択器のロード
     style_selector = RuleBasedStyleSelector(style_mapping)
@@ -395,7 +395,7 @@ async def create_pipeline(
 | アーティファクト | パス | 生成元 |
 |---------------|------|--------|
 | 感情分類器チェックポイント | `artifacts/phase3/checkpoints/classifier_best.pt` | Phase 3a (EB3-C01) |
-| パラメータ生成器チェックポイント | `artifacts/phase3/checkpoints/generator_best.pt` | Phase 3b (EB3-D01) |
+| パラメータ生成器モデルディレクトリ | `artifacts/phase3/checkpoints/generator_best/` | Phase 3b (EB3-D01) |
 | スタイルマッピング JSON | `artifacts/phase3/style_mapping.json` | Phase 3c (EB3-E01) |
 | VOICEVOX Engine | `http://localhost:50021` | 外部依存（ユーザーが起動） |
 
@@ -426,9 +426,9 @@ bridge_parser.add_argument(
     help="Path to emotion classifier checkpoint",
 )
 bridge_parser.add_argument(
-    "--generator-checkpoint",
-    default="artifacts/phase3/checkpoints/generator_best.pt",
-    help="Path to parameter generator checkpoint",
+    "--generator-model-dir",
+    default="artifacts/phase3/checkpoints/generator_best",
+    help="Path to parameter generator model directory",
 )
 bridge_parser.add_argument(
     "--style-mapping",

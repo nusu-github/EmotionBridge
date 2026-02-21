@@ -257,56 +257,60 @@ class EmotionBridgePipeline:
         )
 
 
-def _load_generator_checkpoint(
-    checkpoint_path: str | Path,
+def _load_generator_model_dir(
+    model_dir: str | Path,
     *,
     device: str,
 ) -> tuple[nn.Module, torch.device]:
-    """チェックポイントからジェネレータモデルをロードする。"""
-    path = Path(checkpoint_path)
+    """ジェネレータモデルディレクトリからモデルをロードする。"""
+    path = Path(model_dir)
+    if path.suffix == ".pt":
+        msg = (
+            "Legacy .pt generator checkpoints are not supported. "
+            "Pass a model directory created by save_pretrained."
+        )
+        raise ValueError(msg)
+
     if not path.exists():
-        msg = f"generator checkpoint not found: {path}"
+        msg = f"generator model directory not found: {path}"
         raise FileNotFoundError(msg)
+
+    if not path.is_dir():
+        msg = f"generator model path must be a directory: {path}"
+        raise ValueError(msg)
 
     device_obj = torch.device(
         "cuda" if (device == "cuda" and torch.cuda.is_available()) else "cpu",
     )
 
-    checkpoint = torch.load(path, map_location=device_obj)
-    model_type = checkpoint.get("model_type", "parameter_generator")
+    config_path = path / "config.json"
+    if not config_path.exists():
+        msg = f"config.json not found in generator model directory: {path}"
+        raise FileNotFoundError(msg)
 
-    model_state_dict = checkpoint.get("model_state_dict")
-    if model_state_dict is None:
-        msg = "model_state_dict not found in generator checkpoint"
+    with config_path.open("r", encoding="utf-8") as file:
+        model_config = json.load(file)
+
+    if not isinstance(model_config, dict):
+        msg = f"Invalid generator config in {config_path}: expected JSON object"
         raise ValueError(msg)
 
     model: nn.Module
-    if model_type == "deterministic_mixer":
-        recommended = checkpoint.get("recommended_params")
-        if recommended is None:
-            msg = "recommended_params not found in deterministic_mixer checkpoint"
-            raise ValueError(msg)
-        teacher_matrix = torch.tensor(recommended, dtype=torch.float32)
-        model = DeterministicMixer(teacher_matrix).to(device_obj)
-        model.load_state_dict(model_state_dict, strict=True)
+    if "teacher_matrix_list" in model_config:
+        model = DeterministicMixer.from_pretrained(str(path))
+    elif any(
+        key in model_config for key in ("num_emotions", "hidden_dim", "num_params", "dropout")
+    ):
+        model = ParameterGenerator.from_pretrained(str(path))
     else:
-        model_config = (
-            checkpoint.get("config", {}).get("model", {}) if isinstance(checkpoint, dict) else {}
+        msg = (
+            "Unable to detect generator model type from config.json. "
+            "Expected 'teacher_matrix_list' for DeterministicMixer or "
+            "ParameterGenerator init keys."
         )
-        hidden_dim = int(model_config.get("hidden_dim", 64))
-        dropout = float(model_config.get("dropout", 0.3))
+        raise ValueError(msg)
 
-        model = ParameterGenerator(hidden_dim=hidden_dim, dropout=dropout).to(
-            device_obj,
-        )
-        current_state_dict = model.state_dict()
-        compatible_state_dict = {
-            key: value
-            for key, value in model_state_dict.items()
-            if key in current_state_dict and current_state_dict[key].shape == value.shape
-        }
-        model.load_state_dict(compatible_state_dict, strict=False)
-
+    model = model.to(device_obj)
     model.eval()
     return model, device_obj
 
@@ -314,7 +318,7 @@ def _load_generator_checkpoint(
 async def create_pipeline(
     *,
     classifier_checkpoint: str | Path,
-    generator_checkpoint: str | Path,
+    generator_model_dir: str | Path,
     style_mapping: str | Path,
     voicevox_url: str,
     character: str,
@@ -330,8 +334,8 @@ async def create_pipeline(
         msg = "bridge requires a classifier checkpoint for --classifier-checkpoint"
         raise ValueError(msg)
 
-    generator, generator_device = _load_generator_checkpoint(
-        generator_checkpoint,
+    generator, generator_device = _load_generator_model_dir(
+        generator_model_dir,
         device=device,
     )
 

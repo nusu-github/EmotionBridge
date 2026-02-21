@@ -21,6 +21,9 @@ class EmotionEncoder:
         if not self.checkpoint_path.exists():
             msg = f"Checkpoint not found: {self.checkpoint_path}"
             raise FileNotFoundError(msg)
+        if not self.checkpoint_path.is_dir():
+            msg = f"Checkpoint path must be a directory: {self.checkpoint_path}"
+            raise ValueError(msg)
 
         self.device = torch.device(
             "cuda" if (device == "cuda" and torch.cuda.is_available()) else "cpu",

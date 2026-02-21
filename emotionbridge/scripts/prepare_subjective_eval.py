@@ -48,9 +48,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="分類器チェックポイント",
     )
     parser.add_argument(
-        "--generator-checkpoint",
-        default="artifacts/generator/checkpoints/best_generator.pt",
-        help="生成器チェックポイント",
+        "--generator-model-dir",
+        default="artifacts/generator/checkpoints/best_generator",
+        help="生成器モデルディレクトリ",
     )
     parser.add_argument(
         "--style-mapping",
@@ -234,7 +234,7 @@ async def run_prepare(
     output_dir: str,
     character: str,
     classifier_checkpoint: str,
-    generator_checkpoint: str,
+    generator_model_dir: str,
     style_mapping: str,
     voicevox_url: str,
     device: str,
@@ -269,7 +269,7 @@ async def run_prepare(
 
     pipeline = await create_pipeline(
         classifier_checkpoint=classifier_checkpoint,
-        generator_checkpoint=generator_checkpoint,
+        generator_model_dir=generator_model_dir,
         style_mapping=style_mapping,
         voicevox_url=voicevox_url,
         character=character,
@@ -492,7 +492,7 @@ def main() -> None:
             output_dir=args.output_dir,
             character=args.character,
             classifier_checkpoint=args.classifier_checkpoint,
-            generator_checkpoint=args.generator_checkpoint,
+            generator_model_dir=args.generator_model_dir,
             style_mapping=args.style_mapping,
             voicevox_url=args.voicevox_url,
             device=args.device,

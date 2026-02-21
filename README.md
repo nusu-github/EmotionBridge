@@ -178,7 +178,7 @@ uv run python main.py bridge \
   --output output.wav \
   --character zundamon \
   --classifier-checkpoint artifacts/classifier/checkpoints/best_model \
-  --generator-checkpoint artifacts/generator/checkpoints/best_generator.pt \
+  --generator-model-dir artifacts/generator/checkpoints/best_generator \
   --style-mapping artifacts/prosody/style_mapping.json \
   --enable-dsp \
   --dsp-features-path artifacts/prosody/v01/jvnv_egemaps_normalized.parquet \
@@ -187,15 +187,16 @@ uv run python main.py bridge \
 
 主要オプション:
 
-| オプション             | 既定値                                                  | 説明                                                           |
-| ---------------------- | ------------------------------------------------------- | -------------------------------------------------------------- |
-| `--character`          | `zundamon`                                              | スタイルマッピング内のキャラクターキー                         |
-| `--fallback-threshold` | `0.3`                                                   | 感情確信度がこの値未満の場合デフォルトスタイルにフォールバック |
-| `--enable-dsp`         | `False`                                                 | WORLDベースのDSP後処理を有効化                                 |
-| `--dsp-features-path`  | `artifacts/prosody/v01/jvnv_egemaps_normalized.parquet` | EmotionDSPMapper 初期化用の特徴量parquet                       |
-| `--dsp-f0-extractor`   | `dio`                                                   | DSP段のWORLD解析で使うF0抽出法（`dio` または `harvest`）       |
-| `--device`             | `cuda`                                                  | 推論デバイス（`cuda` または `cpu`）                            |
-| `--voicevox-url`       | `http://127.0.0.1:50021`                                | VOICEVOX Engine URL（`http://` / `https://`）                  |
+| オプション | 既定値 | 説明 |
+| --- | --- | --- |
+| `--character` | `zundamon` | スタイルマッピング内のキャラクターキー |
+| `--generator-model-dir` | `artifacts/generator/checkpoints/best_generator` | 生成器モデルディレクトリ（`save_pretrained` 形式） |
+| `--fallback-threshold` | `0.3` | 感情確信度がこの値未満の場合デフォルトスタイルにフォールバック |
+| `--enable-dsp` | `False` | WORLDベースのDSP後処理を有効化 |
+| `--dsp-features-path` | `artifacts/prosody/v01/jvnv_egemaps_normalized.parquet` | EmotionDSPMapper 初期化用の特徴量parquet |
+| `--dsp-f0-extractor` | `dio` | DSP段のWORLD解析で使うF0抽出法（`dio` または `harvest`） |
+| `--device` | `cuda` | 推論デバイス（`cuda` または `cpu`） |
+| `--voicevox-url` | `http://127.0.0.1:50021` | VOICEVOX Engine URL（`http://` / `https://`） |
 
 `bridge` のJSON出力には以下のDSP関連項目が追加される:
 
@@ -212,7 +213,7 @@ uv run python -m emotionbridge.scripts.prepare_subjective_eval \
   --output-dir artifacts/prosody/subjective_eval/pilot_v01 \
   --character zundamon \
   --classifier-checkpoint artifacts/classifier/checkpoints/best_model \
-  --generator-checkpoint artifacts/generator/checkpoints/best_generator.pt \
+  --generator-model-dir artifacts/generator/checkpoints/best_generator \
   --style-mapping artifacts/prosody/style_mapping.json
 
 # 回答CSV集計（responses/*.csv 配置後）
@@ -271,7 +272,7 @@ from emotionbridge.inference import create_pipeline
 
 pipeline = await create_pipeline(
     classifier_checkpoint="artifacts/classifier/checkpoints/best_model",
-    generator_checkpoint="artifacts/generator/checkpoints/best_generator.pt",
+    generator_model_dir="artifacts/generator/checkpoints/best_generator",
     style_mapping="artifacts/prosody/style_mapping.json",
     voicevox_url="https://your-voicevox.example.com",
     character="zundamon",
@@ -293,6 +294,16 @@ print(result.dsp_params)       # {"jitter_amount": 0.18, ...} or None
 print(result.style_name)       # "うれしい"
 
 await pipeline.close()
+```
+
+### Hub へ成果物アップロード
+
+```bash
+uv run python -m emotionbridge.scripts.upload_artifacts \
+  --repo-id username/emotionbridge-generator \
+  --local-dir artifacts/generator/checkpoints/best_generator \
+  --path-in-repo checkpoints/best_generator \
+  --repo-type model
 ```
 
 ## プロジェクト構成

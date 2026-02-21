@@ -306,18 +306,13 @@ def weighted_mse_loss(
 - **保存トリガ**: validation loss が best を更新したタイミング
 - **保存内容**:
   ```python
-  {
-      "model_state_dict": model.state_dict(),
-      "recommended_params": recommended_params,  # 教師テーブル（再現性のため）
-      "emotion_labels": JVNV_EMOTION_LABELS,
-      "control_param_names": CONTROL_PARAM_NAMES,
-      "training_strategy": "lookup_table_v1",     # 方式の識別子
-      "nearest_k": 25,
-      "config": training_config_dict,
-  }
+  checkpoints/best_generator/
+    ├── config.json
+    ├── model.safetensors
+    └── metadata.json
   ```
-- **保存先**: `artifacts/phase3b/checkpoints/best_generator.pt`
-- **Phase 0との構造的対称性**: Phase 0のチェックポイント（`best_model.pt`）と同様の形式で、モデル設定を同梱して自己完結的にする
+- **保存先**: `artifacts/phase3b/checkpoints/best_generator/`
+- **Phase 0との構造的対称性**: Phase 0のチェックポイント（HF標準ディレクトリ形式）と同様に、`config.json` を含む自己完結形式で管理する
 
 ### E.6 学習データの分割
 
@@ -373,7 +368,7 @@ def weighted_mse_loss(
 
 ```
 入力:
-  --generator-checkpoint: パラメータ生成器のチェックポイント
+  --generator-model-dir: パラメータ生成器のモデルディレクトリ
   --phase0-checkpoint: Phase 0分類器のチェックポイント
   --config: experiment_config.yaml（正規化パラメータ等の参照）
   --test-texts: 評価用テキストファイル（1行1テキスト + 感情ラベル）
@@ -497,7 +492,7 @@ configs/
 artifacts/
 └── phase3b/                  # 新規ディレクトリ
     ├── checkpoints/
-    │   └── best_generator.pt
+  │   └── best_generator/
     ├── teacher_table/
     │   └── recommended_params.json  # 教師テーブル（k値・median/mean の記録）
     └── reports/

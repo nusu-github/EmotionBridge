@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from huggingface_hub import PyTorchModelHubMixin
+import numpy as np
 import torch
 from torch import nn
 
@@ -10,10 +12,14 @@ from emotionbridge.constants import (
     NUM_CONTROL_PARAMS,
     NUM_JVNV_EMOTIONS,
 )
-import numpy as np
 
 
-class ParameterGenerator(nn.Module):
+class ParameterGenerator(
+    nn.Module,
+    PyTorchModelHubMixin,
+    library_name="emotionbridge",
+    tags=["emotion-tts", "parameter-generator"],
+):
     """6D感情確率ベクトルを5D制御パラメータへ写像する（NN版）。
 
     テキスト埋め込みを入力に追加する際にはこちらを拡張する。
@@ -42,7 +48,12 @@ class ParameterGenerator(nn.Module):
         return self.tanh(x)
 
 
-class DeterministicMixer(nn.Module):
+class DeterministicMixer(
+    nn.Module,
+    PyTorchModelHubMixin,
+    library_name="emotionbridge",
+    tags=["emotion-tts", "deterministic-mixer"],
+):
     """6D感情確率ベクトルを教師表との線形混合で5D制御パラメータへ変換する。
 
     params = tanh(emotion_probs @ teacher_matrix)
@@ -54,14 +65,27 @@ class DeterministicMixer(nn.Module):
 
     teacher_matrix: torch.Tensor
 
-    def __init__(self, teacher_matrix: torch.Tensor) -> None:
+    def __init__(self, teacher_matrix_list: list[list[float]]) -> None:
         super().__init__()
+        if len(teacher_matrix_list) != NUM_JVNV_EMOTIONS:
+            msg = (
+                f"teacher_matrix_list must have {NUM_JVNV_EMOTIONS} rows, "
+                f"got {len(teacher_matrix_list)}"
+            )
+            raise ValueError(msg)
+
+        row_lengths = {len(row) for row in teacher_matrix_list}
+        if row_lengths != {NUM_CONTROL_PARAMS}:
+            msg = f"Each teacher matrix row must have {NUM_CONTROL_PARAMS} values"
+            raise ValueError(msg)
+
+        teacher_matrix = torch.tensor(teacher_matrix_list, dtype=torch.float32)
         self.register_buffer("teacher_matrix", teacher_matrix)
         self.tanh = nn.Tanh()
 
     @classmethod
     def from_numpy(cls, matrix: np.ndarray) -> "DeterministicMixer":
-        return cls(torch.tensor(matrix, dtype=torch.float32))
+        return cls(matrix.tolist())
 
     @classmethod
     def from_json(cls, path: str | Path) -> "DeterministicMixer":
@@ -71,12 +95,12 @@ class DeterministicMixer(nn.Module):
 
         rows = payload["table"]
         row_by_emotion = {r["emotion"]: r for r in rows}
-        matrix: list[list[float]] = []
+        matrix_list: list[list[float]] = []
         for emotion in JVNV_EMOTION_LABELS:
             row = row_by_emotion[emotion]
-            matrix.append([float(row[f"ctrl_{name}"]) for name in CONTROL_PARAM_NAMES])
+            matrix_list.append([float(row[f"ctrl_{name}"]) for name in CONTROL_PARAM_NAMES])
 
-        return cls(torch.tensor(matrix, dtype=torch.float32))
+        return cls(matrix_list)
 
     def forward(self, emotion_probs: torch.Tensor) -> torch.Tensor:
         return self.tanh(emotion_probs @ self.teacher_matrix)

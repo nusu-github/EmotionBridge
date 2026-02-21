@@ -108,9 +108,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to classifier checkpoint directory",
     )
     bridge_parser.add_argument(
-        "--generator-checkpoint",
-        default="artifacts/generator/checkpoints/best_generator.pt",
-        help="Path to generator checkpoint",
+        "--generator-model-dir",
+        default="artifacts/generator/checkpoints/best_generator",
+        help="Path to generator model directory",
     )
     bridge_parser.add_argument(
         "--style-mapping",
@@ -261,7 +261,7 @@ def _cmd_bridge(
     output: str,
     character: str,
     classifier_checkpoint: str,
-    generator_checkpoint: str,
+    generator_model_dir: str,
     style_mapping: str,
     voicevox_url: str,
     fallback_threshold: float,
@@ -275,7 +275,7 @@ def _cmd_bridge(
     async def _run() -> None:
         pipeline = await create_pipeline(
             classifier_checkpoint=classifier_checkpoint,
-            generator_checkpoint=generator_checkpoint,
+            generator_model_dir=generator_model_dir,
             style_mapping=style_mapping,
             voicevox_url=voicevox_url,
             character=character,
@@ -339,7 +339,7 @@ def main() -> None:
             args.output,
             args.character,
             args.classifier_checkpoint,
-            args.generator_checkpoint,
+            args.generator_model_dir,
             args.style_mapping,
             args.voicevox_url,
             args.fallback_threshold,

@@ -83,7 +83,7 @@ uv run python -m emotionbridge.scripts.prepare_subjective_eval \
   --output-dir artifacts/prosody/subjective_eval/pilot_v01 \
   --character zundamon \
   --classifier-checkpoint artifacts/classifier/checkpoints/best_model \
-  --generator-checkpoint artifacts/generator/checkpoints/best_generator.pt \
+  --generator-model-dir artifacts/generator/checkpoints/best_generator \
   --style-mapping artifacts/prosody/style_mapping.json
 uv run python -m emotionbridge.scripts.analyze_subjective_eval \
   --eval-dir artifacts/prosody/subjective_eval/pilot_v01
@@ -173,7 +173,7 @@ EmotionEncoder(6D probs) → DeterministicMixer(5D params) → RuleBasedStyleSel
 - **DeterministicMixer** (`model/generator.py`): `tanh(emotion_probs @ teacher_matrix)` — 6×5 教師行列の線形混合。学習パラメータなし
 - **ParameterGenerator** (`model/generator.py`): Linear(6→hidden)→ReLU→Dropout→Linear(hidden→5)→Tanh — NN版の代替
 - **RuleBasedStyleSelector**: `style_mapping.json` に基づき感情→VOICEVOX スタイルをマッピング
-- チェックポイントの `model_type` フィールドで DeterministicMixer / ParameterGenerator を自動判別
+- `checkpoints/best_generator/config.json` のキーで DeterministicMixer / ParameterGenerator を自動判別
 - 信頼度が `fallback_threshold`（default: 0.3）未満 → デフォルトスタイル＋ゼロ ControlVector にフォールバック
 - ファクトリ: `create_pipeline()` (async)
 
@@ -197,7 +197,7 @@ EmotionEncoder(6D probs) → DeterministicMixer(5D params) → RuleBasedStyleSel
 artifacts/
 ├── classifier/checkpoints/best_model, reports/
 ├── audio_gen/audio/, dataset/triplet_dataset.parquet
-├── generator/checkpoints/best_generator.pt
+├── generator/checkpoints/best_generator/
 └── prosody/v01/ (JVNV), v02/ (VOICEVOX), v03/ (matching), style_mapping.json
 ```
 

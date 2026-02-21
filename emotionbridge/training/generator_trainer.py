@@ -1,4 +1,5 @@
 import json
+import shutil
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -194,6 +195,69 @@ def _mae_by_axis(predictions: np.ndarray, targets: np.ndarray) -> list[float]:
     return np.mean(np.abs(predictions - targets), axis=0).astype(np.float64).tolist()
 
 
+def _reset_directory(path: Path) -> None:
+    if path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _write_generator_checkpoint_metadata(
+    checkpoint_dir: Path,
+    *,
+    config: GeneratorConfig,
+    training_strategy: str,
+) -> None:
+    metadata = {
+        "training_strategy": training_strategy,
+        "emotion_labels": list(JVNV_EMOTION_LABELS),
+        "control_param_names": list(CONTROL_PARAM_NAMES),
+        "generator_config": config.to_dict(),
+    }
+    with (checkpoint_dir / "metadata.json").open("w", encoding="utf-8") as file:
+        json.dump(metadata, file, ensure_ascii=False, indent=2)
+
+    model_card = "\n".join(
+        [
+            "---",
+            "library_name: emotionbridge",
+            "tags:",
+            "  - emotion-tts",
+            f"  - {training_strategy}",
+            "---",
+            "",
+            "# EmotionBridge Generator",
+            "",
+            "## Training",
+            f"- strategy: {training_strategy}",
+            f"- emotions: {', '.join(JVNV_EMOTION_LABELS)}",
+            f"- control_params: {', '.join(CONTROL_PARAM_NAMES)}",
+            "",
+            "## Config",
+            "```json",
+            json.dumps(config.to_dict(), ensure_ascii=False, indent=2),
+            "```",
+            "",
+        ],
+    )
+    (checkpoint_dir / "README.md").write_text(model_card, encoding="utf-8")
+
+
+def _save_generator_model(
+    model: ParameterGenerator | DeterministicMixer,
+    checkpoint_dir: Path,
+    *,
+    config: GeneratorConfig,
+    training_strategy: str,
+) -> None:
+    _reset_directory(checkpoint_dir)
+    model.save_pretrained(str(checkpoint_dir), safe_serialization=True)
+    _write_generator_checkpoint_metadata(
+        checkpoint_dir,
+        config=config,
+        training_strategy=training_strategy,
+    )
+
+
 def _run_eval(
     model: ParameterGenerator,
     loader: DataLoader,
@@ -244,18 +308,12 @@ def _train_deterministic(
 
     model = DeterministicMixer.from_numpy(recommended_matrix)
 
-    best_path = checkpoints_dir / "best_generator.pt"
-    torch.save(
-        {
-            "model_type": "deterministic_mixer",
-            "model_state_dict": model.state_dict(),
-            "recommended_params": recommended_matrix.tolist(),
-            "emotion_labels": JVNV_EMOTION_LABELS,
-            "control_param_names": CONTROL_PARAM_NAMES,
-            "training_strategy": "deterministic",
-            "config": config.to_dict(),
-        },
-        best_path,
+    best_dir = checkpoints_dir / "best_generator"
+    _save_generator_model(
+        model,
+        best_dir,
+        config=config,
+        training_strategy="deterministic",
     )
 
     save_effective_generator_config(config, output_dir / "effective_config.yaml")
@@ -306,7 +364,7 @@ def _train_deterministic(
 
     return {
         "output_dir": str(output_dir),
-        "checkpoint": str(best_path),
+        "checkpoint": str(best_dir),
         "best_epoch": 0,
         "best_val_loss": 0.0,
         "final_val_loss": 0.0,
@@ -387,8 +445,6 @@ def train_generator(config: GeneratorConfig) -> dict[str, Any]:
         dtype=torch.float32,
         device=device,
     )
-    model.register_buffer("recommended_params", recommended_tensor)
-
     optimizer = Adam(
         model.parameters(),
         lr=config.train.lr,
@@ -404,7 +460,7 @@ def train_generator(config: GeneratorConfig) -> dict[str, Any]:
     best_val_loss = float("inf")
     best_epoch = 0
     early_stop = 0
-    best_path = checkpoints_dir / "best_generator.pt"
+    best_dir = checkpoints_dir / "best_generator"
     history: list[dict[str, Any]] = []
 
     for epoch in range(1, config.train.num_epochs + 1):
@@ -471,18 +527,11 @@ def train_generator(config: GeneratorConfig) -> dict[str, Any]:
             best_val_loss = val_loss
             best_epoch = epoch
             early_stop = 0
-            torch.save(
-                {
-                    "model_type": "parameter_generator",
-                    "model_state_dict": model.state_dict(),
-                    "recommended_params": recommended_matrix.tolist(),
-                    "emotion_labels": JVNV_EMOTION_LABELS,
-                    "control_param_names": CONTROL_PARAM_NAMES,
-                    "training_strategy": config.data.strategy,
-                    "nearest_k": 25,
-                    "config": config.to_dict(),
-                },
-                best_path,
+            _save_generator_model(
+                model,
+                best_dir,
+                config=config,
+                training_strategy=config.data.strategy,
             )
         else:
             early_stop += 1
@@ -490,8 +539,7 @@ def train_generator(config: GeneratorConfig) -> dict[str, Any]:
         if early_stop >= config.train.early_stopping_patience:
             break
 
-    checkpoint = torch.load(best_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    model = ParameterGenerator.from_pretrained(str(best_dir)).to(device)
     final_val_loss, final_mae_axis = _run_eval(
         model,
         val_loader,
@@ -541,7 +589,7 @@ def train_generator(config: GeneratorConfig) -> dict[str, Any]:
 
     return {
         "output_dir": str(output_dir),
-        "checkpoint": str(best_path),
+        "checkpoint": str(best_dir),
         "best_epoch": int(best_epoch),
         "best_val_loss": float(best_val_loss),
         "final_val_loss": float(final_val_loss),

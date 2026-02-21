@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 from emotionbridge.inference.encoder import EmotionEncoder
 
@@ -28,6 +29,13 @@ class _FakePipeline:
 
 
 class TestEmotionEncoder(unittest.TestCase):
+    def test_non_directory_checkpoint_path_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            checkpoint_file = Path(tmp_dir) / "checkpoint.bin"
+            checkpoint_file.write_text("dummy", encoding="utf-8")
+            with pytest.raises(ValueError, match="Checkpoint path must be a directory"):
+                EmotionEncoder(str(checkpoint_file), device="cpu")
+
     def test_encode_batch_maps_scores_by_id2label_order(self) -> None:
         responses = [
             [
