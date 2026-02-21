@@ -1,6 +1,5 @@
-from .generator import DeterministicMixer, ParameterGenerator
+from .generator import DeterministicMixer
 
 __all__ = [
     "DeterministicMixer",
-    "ParameterGenerator",
 ]

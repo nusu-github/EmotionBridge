@@ -12,7 +12,7 @@ from torch import nn
 
 from emotionbridge.constants import CONTROL_PARAM_NAMES, JVNV_EMOTION_LABELS
 from emotionbridge.inference.encoder import EmotionEncoder
-from emotionbridge.model import DeterministicMixer, ParameterGenerator
+from emotionbridge.model import DeterministicMixer
 from emotionbridge.tts.adapter import VoicevoxAdapter
 from emotionbridge.tts.types import ControlVector
 from emotionbridge.tts.voicevox_client import VoicevoxClient
@@ -295,20 +295,14 @@ def _load_generator_model_dir(
         msg = f"Invalid generator config in {config_path}: expected JSON object"
         raise ValueError(msg)
 
-    model: nn.Module
-    if "teacher_matrix_list" in model_config:
-        model = DeterministicMixer.from_pretrained(str(path))
-    elif any(
-        key in model_config for key in ("num_emotions", "hidden_dim", "num_params", "dropout")
-    ):
-        model = ParameterGenerator.from_pretrained(str(path))
-    else:
+    if "teacher_matrix_list" not in model_config:
         msg = (
-            "Unable to detect generator model type from config.json. "
-            "Expected 'teacher_matrix_list' for DeterministicMixer or "
-            "ParameterGenerator init keys."
+            "Invalid generator config: expected DeterministicMixer checkpoint "
+            "with 'teacher_matrix_list' in config.json"
         )
         raise ValueError(msg)
+
+    model: nn.Module = DeterministicMixer.from_pretrained(str(path))
 
     model = model.to(device_obj)
     model.eval()

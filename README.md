@@ -21,7 +21,7 @@ EmotionBridge は日本語テキストから感情を分類し、その結果に
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | Phase 0  | 日本語テキスト感情分類器。BERT + 分類ヘッド、WRIME データセットで学習。6感情クラス（anger, disgust, fear, happy, sad, surprise）           |
 | Phase 1  | VOICEVOX TTS 統合。音声サンプル生成パイプライン。5D制御パラメータ（pitch_shift, pitch_range, speed, energy, pause_weight）                 |
-| Phase 3  | 韻律特徴ワークフロー。JVNV/VOICEVOX の eGeMAPS 抽出・正規化・クロスドメイン整合・マッチングにより教師表を作成し、DeterministicMixer を学習 |
+| Phase 3  | 韻律特徴ワークフロー。JVNV/VOICEVOX の eGeMAPS 抽出・正規化・クロスドメイン整合・マッチングにより教師表を作成し、DeterministicMixer を構築 |
 | Bridge   | 統合推論パイプライン。テキスト入力から感情分類・パラメータ生成・スタイル選択・音声合成までを一括実行                                       |
 
 ## セットアップ
@@ -160,7 +160,7 @@ uv run python main.py evaluate domain-gap --config configs/experiment_config.yam
 # 教師表作成
 uv run python -m emotionbridge.scripts.prepare_generator_teacher
 
-# Generator 訓練
+# DeterministicMixer 生成
 uv run python -m emotionbridge.scripts.train_generator --config configs/generator.yaml
 
 # スタイルマッピング構築
@@ -326,7 +326,7 @@ emotionbridge/
 ├── config.py               # Classifier/AudioGen 設定
 ├── constants.py            # 感情ラベル・制御パラメータ定数
 ├── data/                   # WRIME データ処理
-├── model/                  # DeterministicMixer, ParameterGenerator
+├── model/                  # DeterministicMixer
 ├── training/               # Phase 0 訓練, generator_trainer
 ├── inference/              # EmotionEncoder, bridge_pipeline
 ├── generation/             # Phase 1 生成パイプライン

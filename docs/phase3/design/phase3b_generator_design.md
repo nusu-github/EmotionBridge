@@ -141,41 +141,19 @@ k=25件の近傍データは `emotion_param_matches.parquet` に個別レコー�
 
 ## C. モデルアーキテクチャ詳細
 
-### C.1 ParameterGenerator クラス設計
+### C.1 DeterministicMixer クラス設計
 
 ```python
-class ParameterGenerator(nn.Module):
-    """6D感情確率ベクトル → 5D制御パラメータの変換器。
+class DeterministicMixer(nn.Module):
+  """6D感情確率ベクトル → 5D制御パラメータの決定論的変換器。"""
 
-    EB3-D01-003: Linear(6, 64) -> ReLU -> Dropout(0.3) -> Linear(64, 5) -> tanh
-    """
+  def __init__(self, teacher_matrix_list: list[list[float]]) -> None:
+    super().__init__()
+    self.register_buffer("teacher_matrix", torch.tensor(teacher_matrix_list))
+    self.tanh = nn.Tanh()
 
-    def __init__(
-        self,
-        num_emotions: int = 6,        # JVNV_EMOTION_LABELS の数
-        hidden_dim: int = 64,
-        num_params: int = 5,           # NUM_CONTROL_PARAMS
-        dropout: float = 0.3,
-    ) -> None:
-        super().__init__()
-        self.fc1 = nn.Linear(num_emotions, hidden_dim)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(hidden_dim, num_params)
-        self.tanh = nn.Tanh()
-
-    def forward(self, emotion_probs: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            emotion_probs: (batch_size, 6) - 感情確率ベクトル
-        Returns:
-            (batch_size, 5) - 制御パラメータ [-1, +1]
-        """
-        x = self.fc1(emotion_probs)
-        x = self.relu(x)
-        x = self.dropout(x)
-        x = self.fc2(x)
-        return self.tanh(x)
+  def forward(self, emotion_probs: torch.Tensor) -> torch.Tensor:
+    return self.tanh(emotion_probs @ self.teacher_matrix)
 ```
 
 ### C.2 パラメータ数の詳細
@@ -473,7 +451,7 @@ EB3-D01 (パラメータ生成器)
 emotionbridge/
 ├── model/
 │   ├── regressor.py          # 既存: TextEmotionRegressor (Phase 0)
-│   ├── generator.py          # 新規: ParameterGenerator (Phase 3b)
+│   ├── generator.py          # 新規: DeterministicMixer (Phase 3b)
 │   └── __init__.py           # generator を公開に追加
 ├── training/
 │   ├── trainer.py            # 既存: Phase 0 学習ループ

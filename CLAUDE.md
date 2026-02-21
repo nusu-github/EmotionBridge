@@ -153,7 +153,7 @@ WRIME (shunk031/wrime on HF Hub)
   → inference/encoder.py: EmotionEncoder → encode() returns numpy (6,)
 ```
 
-分類器はカスタムモデルクラスではなく `AutoModelForSequenceClassification` を直接使用。`model/` には `DeterministicMixer` と `ParameterGenerator` のみ残る。
+分類器はカスタムモデルクラスではなく `AutoModelForSequenceClassification` を直接使用。`model/` には `DeterministicMixer` のみ残る。
 
 Differential learning rates: `_split_model_parameters()` で BERT backbone (`bert_lr: 2e-5`) と classification head (`head_lr: 1e-3`) を分離。
 
@@ -178,9 +178,8 @@ EmotionEncoder(6D probs) → DeterministicMixer(5D params) → RuleBasedStyleSel
 ```
 
 - **DeterministicMixer** (`model/generator.py`): `tanh(emotion_probs @ teacher_matrix)` — 6×5 教師行列の線形混合。学習パラメータなし
-- **ParameterGenerator** (`model/generator.py`): Linear(6→hidden)→ReLU→Dropout→Linear(hidden→5)→Tanh — NN版の代替
 - **RuleBasedStyleSelector**: `style_mapping.json` に基づき感情→VOICEVOX スタイルをマッピング
-- `checkpoints/best_generator/config.json` のキーで DeterministicMixer / ParameterGenerator を自動判別
+- `checkpoints/best_generator/config.json` の `teacher_matrix_list` を必須キーとして DeterministicMixer をロード
 - 信頼度が `fallback_threshold`（default: 0.3）未満 → デフォルトスタイル＋ゼロ ControlVector にフォールバック
 - ファクトリ: `create_pipeline()` (async)
 

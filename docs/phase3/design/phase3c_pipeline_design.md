@@ -153,7 +153,7 @@ Phase 3 初期はルールベース（1感情 = 1スタイル）で実装する�
 ```
 EmotionBridgePipeline
   ├── EmotionClassifier          # Phase 0 再設計: テキスト → 6D 感情確率
-  ├── ParameterGenerator         # Phase 3b: 6D 感情確率 → 5D 制御パラメータ
+    ├── DeterministicMixer         # Phase 3b: 6D 感情確率 → 5D 制御パラメータ
   ├── StyleSelector (ABC)        # EB3-E01: 感情カテゴリ → style_id
   │    └── RuleBasedStyleSelector
   ├── VoicevoxAdapter            # 既存: 5D → VOICEVOX パラメータ変換
@@ -225,7 +225,7 @@ class EmotionBridgePipeline:
     def __init__(
         self,
         classifier: EmotionClassifier,
-        generator: ParameterGenerator,
+        generator: DeterministicMixer,
         style_selector: StyleSelector,
         voicevox_client: VoicevoxClient,
         adapter: VoicevoxAdapter,
@@ -531,7 +531,7 @@ except VoicevoxConnectionError as e:
 #### モデルファイル欠損時
 
 ```python
-# EmotionClassifier.__init__() / ParameterGenerator.load() で検出
+# EmotionClassifier.__init__() / DeterministicMixer.load() で検出
 if not checkpoint_path.exists():
     raise FileNotFoundError(
         f"チェックポイントが見つかりません: {checkpoint_path}\n"
@@ -613,7 +613,7 @@ async def synthesize_batch(
 ```
 テスト入力テキスト
   → EmotionClassifier (6D 感情確率)
-  → ParameterGenerator (5D 制御パラメータ)
+    → DeterministicMixer (5D 制御パラメータ)
   → StyleSelector (style_id)
   → VoicevoxClient (音声合成)
   → openSMILE eGeMAPSv02 (88D 韻律特徴量)

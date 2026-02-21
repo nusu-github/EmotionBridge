@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from emotionbridge.inference.bridge_pipeline import _load_generator_model_dir
-from emotionbridge.model import DeterministicMixer, ParameterGenerator
+from emotionbridge.model import DeterministicMixer
 
 
 class TestBridgePipelineGeneratorLoader(unittest.TestCase):
@@ -22,17 +22,6 @@ class TestBridgePipelineGeneratorLoader(unittest.TestCase):
 
             loaded, device = _load_generator_model_dir(model_dir, device="cpu")
             assert isinstance(loaded, DeterministicMixer)
-            assert str(device) == "cpu"
-
-    def test_loads_parameter_generator_from_model_dir(self) -> None:
-        model = ParameterGenerator(hidden_dim=32, dropout=0.1)
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model_dir = Path(tmp_dir) / "parameter"
-            model.save_pretrained(str(model_dir), safe_serialization=True)
-
-            loaded, device = _load_generator_model_dir(model_dir, device="cpu")
-            assert isinstance(loaded, ParameterGenerator)
             assert str(device) == "cpu"
 
     def test_rejects_legacy_pt_checkpoint(self) -> None:
@@ -51,7 +40,10 @@ class TestBridgePipelineGeneratorLoader(unittest.TestCase):
             model_dir.mkdir(parents=True, exist_ok=True)
             (model_dir / "config.json").write_text("{}", encoding="utf-8")
 
-            with pytest.raises(ValueError, match="Unable to detect generator model type"):
+            with pytest.raises(
+                ValueError,
+                match="Invalid generator config: expected DeterministicMixer checkpoint",
+            ):
                 _load_generator_model_dir(model_dir, device="cpu")
 
 

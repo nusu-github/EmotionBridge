@@ -14,40 +14,6 @@ from emotionbridge.constants import (
 )
 
 
-class ParameterGenerator(
-    nn.Module,
-    PyTorchModelHubMixin,
-    library_name="emotionbridge",
-    tags=["emotion-tts", "parameter-generator"],
-):
-    """6D感情確率ベクトルを5D制御パラメータへ写像する（NN版）。
-
-    テキスト埋め込みを入力に追加する際にはこちらを拡張する。
-    デフォルトはDeterministicMixer。
-    """
-
-    def __init__(
-        self,
-        num_emotions: int = NUM_JVNV_EMOTIONS,
-        hidden_dim: int = 64,
-        num_params: int = NUM_CONTROL_PARAMS,
-        dropout: float = 0.3,
-    ) -> None:
-        super().__init__()
-        self.fc1 = nn.Linear(num_emotions, hidden_dim)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(hidden_dim, num_params)
-        self.tanh = nn.Tanh()
-
-    def forward(self, emotion_probs: torch.Tensor) -> torch.Tensor:
-        x = self.fc1(emotion_probs)
-        x = self.relu(x)
-        x = self.dropout(x)
-        x = self.fc2(x)
-        return self.tanh(x)
-
-
 class DeterministicMixer(
     nn.Module,
     PyTorchModelHubMixin,
