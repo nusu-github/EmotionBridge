@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import io
-from typing import Any, cast
 import unittest
+from typing import Any, cast
 
 import numpy as np
 import soundfile as sf
@@ -15,10 +15,7 @@ from emotionbridge.dsp.types import DSPControlVector
 def _make_wave_bytes(*, seconds: float = 1.0, sr: int = 24000, stereo: bool = False) -> bytes:
     t = np.linspace(0.0, seconds, int(sr * seconds), endpoint=False, dtype=np.float64)
     mono = (0.2 * np.sin(2.0 * np.pi * 220.0 * t)).astype(np.float64)
-    if stereo:
-        wav = np.stack([mono, mono * 0.9], axis=1)
-    else:
-        wav = mono
+    wav = np.stack([mono, mono * 0.9], axis=1) if stereo else mono
 
     buf = io.BytesIO()
     sf.write(buf, wav, sr, format="WAV", subtype="PCM_16")

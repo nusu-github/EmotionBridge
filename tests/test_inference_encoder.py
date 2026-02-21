@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
-from types import SimpleNamespace
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -76,7 +76,7 @@ class TestEmotionEncoder(unittest.TestCase):
                 {"label": "LABEL_2", "score": 0.3},
                 {"label": "LABEL_3", "score": 0.4},
                 {"label": "LABEL_4", "score": 0.5},
-            ]
+            ],
         ]
         fake = _FakePipeline(responses=responses, id2label={})
 

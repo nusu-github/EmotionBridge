@@ -8,6 +8,7 @@ distance_metric=weighted_euclidean 時は偏相関ベースの特徴量重みを
 
 import argparse
 import logging
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -21,8 +22,6 @@ from emotionbridge.scripts.common import (
     save_markdown,
     write_parquet,
 )
-from pathlib import Path
-
 
 logger = logging.getLogger(__name__)
 

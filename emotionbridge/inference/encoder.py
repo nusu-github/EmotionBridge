@@ -76,7 +76,8 @@ class EmotionEncoder:
         missing_labels = [label for label in self._label_names if label not in score_by_label]
         if not missing_labels:
             return np.asarray(
-                [score_by_label[label] for label in self._label_names], dtype=np.float32
+                [score_by_label[label] for label in self._label_names],
+                dtype=np.float32,
             )
 
         if all(label.startswith("LABEL_") for label in score_by_label):

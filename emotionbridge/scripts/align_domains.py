@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from emotionbridge.scripts.common import (
     load_experiment_config,
@@ -17,8 +18,6 @@ from emotionbridge.scripts.common import (
     save_json,
     write_parquet,
 )
-import pandas as pd
-
 
 logger = logging.getLogger(__name__)
 

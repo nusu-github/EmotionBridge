@@ -4,7 +4,6 @@ import numpy as np
 
 from emotionbridge.eval import ClassificationMetricSuite
 
-
 _DEFAULT_CLASSIFICATION_SUITE = ClassificationMetricSuite()
 
 

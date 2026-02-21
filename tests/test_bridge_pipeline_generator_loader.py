@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -30,7 +30,8 @@ class TestBridgePipelineGeneratorLoader(unittest.TestCase):
             pt_path.write_bytes(b"legacy")
 
             with pytest.raises(
-                ValueError, match="Legacy \\.pt generator checkpoints are not supported"
+                ValueError,
+                match="Legacy \\.pt generator checkpoints are not supported",
             ):
                 _load_generator_model_dir(pt_path, device="cpu")
 

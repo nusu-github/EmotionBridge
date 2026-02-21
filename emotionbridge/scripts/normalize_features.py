@@ -1,5 +1,6 @@
 import argparse
 import logging
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -12,8 +13,6 @@ from emotionbridge.scripts.common import (
     save_json,
     write_parquet,
 )
-from pathlib import Path
-
 
 logger = logging.getLogger(__name__)
 

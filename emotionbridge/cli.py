@@ -332,7 +332,9 @@ def _cmd_generate_samples(config_path: str) -> None:
     # JVNVテキスト読み込み
     encoder = EmotionEncoder(config.classifier_checkpoint, device=config.device)
     selected_texts = load_jvnv_texts(
-        config.text_selection.jvnv_transcription_path, encoder, config.text_selection
+        config.text_selection.jvnv_transcription_path,
+        encoder,
+        config.text_selection,
     )
 
     # パイプライン実行

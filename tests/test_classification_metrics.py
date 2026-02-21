@@ -122,7 +122,8 @@ def test_wrapper_delegates_to_default_suite(
     suite_stub = _SuiteStub()
 
     with patch(
-        "emotionbridge.training.classification_metrics._DEFAULT_CLASSIFICATION_SUITE", suite_stub
+        "emotionbridge.training.classification_metrics._DEFAULT_CLASSIFICATION_SUITE",
+        suite_stub,
     ):
         result = compute_classification_metrics(logits, targets, label_names, key_emotions)
 

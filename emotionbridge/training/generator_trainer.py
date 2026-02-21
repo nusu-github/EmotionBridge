@@ -88,13 +88,11 @@ def load_generator_config(config_path: str | Path) -> GeneratorConfig:
     _validate_section_keys("train", train_payload, {"output_dir"})
     _validate_section_keys("eval", eval_payload, {"mae_axis_max"})
 
-    config = GeneratorConfig(
+    return GeneratorConfig(
         data=_build_section(GeneratorDataConfig, data_payload),
         train=_build_section(GeneratorTrainConfig, train_payload),
         eval=_build_section(GeneratorEvalConfig, eval_payload),
     )
-
-    return config
 
 
 def save_effective_generator_config(

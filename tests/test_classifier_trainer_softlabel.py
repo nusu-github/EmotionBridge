@@ -5,9 +5,9 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from datasets import Dataset, DatasetDict
 import pytest
 import torch
+from datasets import Dataset, DatasetDict
 from torch import nn
 from transformers import TrainingArguments
 

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from textwrap import dedent
 
 import pytest
@@ -71,7 +71,7 @@ class TestGeneratorTrainer(unittest.TestCase):
                       output_dir: artifacts/generator
                     eval:
                       mae_axis_max: 0.2
-                    """
+                    """,
                 ),
                 encoding="utf-8",
             )

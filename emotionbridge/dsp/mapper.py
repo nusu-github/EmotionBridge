@@ -7,7 +7,6 @@ from emotionbridge.constants import DSP_PARAM_NAMES, JVNV_EMOTION_LABELS
 from emotionbridge.dsp.config import DSPMapperConfig
 from emotionbridge.dsp.types import DSPControlVector
 
-
 _TARGET_FEATURES: tuple[str, ...] = (
     "egemaps__jitterLocal_sma3nz_amean",
     "egemaps__shimmerLocaldB_sma3nz_amean",

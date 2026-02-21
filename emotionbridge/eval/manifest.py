@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +20,7 @@ def build_evaluation_manifest(
     return {
         "schema_version": EVALUATION_SCHEMA_VERSION,
         "task": task,
-        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+        "generated_at": datetime.now(tz=UTC).isoformat(),
         "gate": gate,
         "summary": summary,
         "inputs": inputs or {},

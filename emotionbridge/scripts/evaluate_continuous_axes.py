@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, r2_score, silhouette_score
@@ -24,8 +25,6 @@ from emotionbridge.scripts.common import (
     read_parquet,
     resolve_path,
 )
-import pandas as pd
-
 
 logger = logging.getLogger(__name__)
 

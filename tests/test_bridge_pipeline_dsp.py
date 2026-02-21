@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, cast
 import unittest
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -92,7 +92,8 @@ class _FakeDSPProcessor:
         del audio_bytes, dsp_params, seed
         self.called = True
         if self.should_raise:
-            raise ValueError("boom")
+            msg = "boom"
+            raise ValueError(msg)
         return b"processed-audio"
 
 

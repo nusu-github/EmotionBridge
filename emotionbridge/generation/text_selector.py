@@ -66,7 +66,7 @@ def _filter_jvnv_candidates(
                     "text": text,
                     "utterance_id": entry["utterance_id"],
                     "emotion_label": emotion_label,
-                }
+                },
             )
     return candidates
 

@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-from huggingface_hub import PyTorchModelHubMixin
 import numpy as np
 import torch
+from huggingface_hub import PyTorchModelHubMixin
 from torch import nn
 
 from emotionbridge.constants import (

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import builtins
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -149,7 +149,8 @@ class TestEvaluateRoundtrip(unittest.TestCase):
             level: int = 0,
         ):
             if name == "pesq":
-                raise ModuleNotFoundError("No module named 'pesq'")
+                msg = "No module named 'pesq'"
+                raise ModuleNotFoundError(msg)
             return original_import(name, globals_, locals_, fromlist, level)
 
         with patch("builtins.__import__", side_effect=_fake_import):

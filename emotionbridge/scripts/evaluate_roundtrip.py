@@ -7,8 +7,7 @@ import logging
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import pyworld as pw
@@ -409,14 +408,12 @@ def _build_markdown_report(result: dict[str, Any]) -> str:
     ]
 
     checks = decision_detail["checks"]
-    lines.append(
-        f"| PESQ | {checks['PESQ']['value']:.4f} | {checks['PESQ']['threshold']:.4f} | >= | {'Yes' if checks['PESQ']['pass'] else 'No'} |",
-    )
-    lines.append(
-        f"| MCD(dB) | {checks['MCD(dB)']['value']:.4f} | {checks['MCD(dB)']['threshold']:.4f} | <= | {'Yes' if checks['MCD(dB)']['pass'] else 'No'} |",
-    )
-    lines.append(
-        f"| F0 RMSE(Hz) | {checks['F0 RMSE(Hz)']['value']:.4f} | {checks['F0 RMSE(Hz)']['threshold']:.4f} | <= | {'Yes' if checks['F0 RMSE(Hz)']['pass'] else 'No'} |",
+    lines.extend(
+        (
+            f"| PESQ | {checks['PESQ']['value']:.4f} | {checks['PESQ']['threshold']:.4f} | >= | {'Yes' if checks['PESQ']['pass'] else 'No'} |",
+            f"| MCD(dB) | {checks['MCD(dB)']['value']:.4f} | {checks['MCD(dB)']['threshold']:.4f} | <= | {'Yes' if checks['MCD(dB)']['pass'] else 'No'} |",
+            f"| F0 RMSE(Hz) | {checks['F0 RMSE(Hz)']['value']:.4f} | {checks['F0 RMSE(Hz)']['threshold']:.4f} | <= | {'Yes' if checks['F0 RMSE(Hz)']['pass'] else 'No'} |",
+        )
     )
 
     lines.extend(

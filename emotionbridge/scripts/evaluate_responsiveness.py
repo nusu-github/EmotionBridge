@@ -176,7 +176,7 @@ def _partial_correlations(
     feature_values = df[feature_cols].to_numpy(dtype=np.float64)
     result_values = np.full((len(control_cols), len(feature_cols)), np.nan, dtype=np.float64)
 
-    for control_index, _control in enumerate(control_cols):
+    for control_index in range(len(control_cols)):
         target_control = control_values[:, control_index]
         other_indices = [index for index in range(len(control_cols)) if index != control_index]
         covariates = control_values[:, other_indices] if other_indices else np.empty((len(df), 0))
@@ -633,7 +633,8 @@ def run_evaluation(
         },
     )
     manifest_path = write_evaluation_manifest(
-        manifest, v02_dir / "v02_responsiveness_manifest.json"
+        manifest,
+        v02_dir / "v02_responsiveness_manifest.json",
     )
 
     results["evaluation_manifest_path"] = str(manifest_path)

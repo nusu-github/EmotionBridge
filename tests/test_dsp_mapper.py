@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -76,7 +76,7 @@ class TestEmotionDSPMapper(unittest.TestCase):
             pd.DataFrame(
                 [
                     {"emotion": "anger", "egemaps__jitterLocal_sma3nz_amean": 1.0},
-                ]
+                ],
             ).to_parquet(path, index=False)
 
             try:

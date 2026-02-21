@@ -1,5 +1,6 @@
 import argparse
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -11,7 +12,6 @@ from emotionbridge.scripts.common import (
     save_json,
     write_parquet,
 )
-from pathlib import Path
 
 
 def _build_parser() -> argparse.ArgumentParser:

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from unittest.mock import patch
 import unittest
+from unittest.mock import patch
 
-from datasets import Dataset, DatasetDict
 import pytest
+from datasets import Dataset, DatasetDict
 
 from emotionbridge.config import ClassifierDataConfig
 from emotionbridge.data.wrime_classifier import (
@@ -44,23 +44,12 @@ def _build_mock_dataset() -> DatasetDict:
             for sample_index in range(6)
         )
 
-    rows.append(
-        {
-            "sentence": "low-0",
-            "avg_readers": _make_label_dict(0, intensity=1.0),
-        },
-    )
-    rows.append(
-        {
-            "sentence": "low-1",
-            "avg_readers": _make_label_dict(1, intensity=1.0),
-        },
-    )
-    rows.append(
-        {
-            "sentence": "   ",
-            "avg_readers": _make_label_dict(2, intensity=3.0),
-        },
+    rows.extend(
+        (
+            {"sentence": "low-0", "avg_readers": _make_label_dict(0, intensity=1.0)},
+            {"sentence": "low-1", "avg_readers": _make_label_dict(1, intensity=1.0)},
+            {"sentence": "   ", "avg_readers": _make_label_dict(2, intensity=3.0)},
+        )
     )
 
     middle = len(rows) // 2
@@ -203,12 +192,14 @@ class TestWrimeClassifier(unittest.TestCase):
             filter_max_intensity_lte=1,
         )
 
-        with patch(
-            "emotionbridge.data.wrime_classifier.load_dataset",
-            return_value=_build_flat_label_dataset(),
+        with (
+            patch(
+                "emotionbridge.data.wrime_classifier.load_dataset",
+                return_value=_build_flat_label_dataset(),
+            ),
+            pytest.raises(KeyError, match="label source 'avg_readers' not found"),
         ):
-            with pytest.raises(KeyError, match="label source 'avg_readers' not found"):
-                build_classifier_splits(config)
+            build_classifier_splits(config)
 
     def test_stratified_split_fail_fast_when_clusters_invalid(self) -> None:
         config = ClassifierDataConfig(
@@ -221,15 +212,17 @@ class TestWrimeClassifier(unittest.TestCase):
             filter_max_intensity_lte=1,
         )
 
-        with patch(
-            "emotionbridge.data.wrime_classifier.load_dataset",
-            return_value=_build_cluster_failure_dataset(),
-        ):
-            with pytest.raises(
+        with (
+            patch(
+                "emotionbridge.data.wrime_classifier.load_dataset",
+                return_value=_build_cluster_failure_dataset(),
+            ),
+            pytest.raises(
                 ValueError,
                 match="Failed to create valid stratification clusters",
-            ):
-                build_classifier_splits(config)
+            ),
+        ):
+            build_classifier_splits(config)
 
 
 if __name__ == "__main__":

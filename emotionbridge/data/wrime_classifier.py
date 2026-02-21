@@ -1,4 +1,5 @@
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 import numpy as np
 from datasets import ClassLabel, Dataset, DatasetDict, concatenate_datasets, load_dataset
@@ -66,7 +67,8 @@ def _build_soft_targets(raw_targets: np.ndarray, temperature: float) -> np.ndarr
 
 
 def _prepare_dataset(
-    data_config: DataConfig, merged_dataset: Dataset
+    data_config: DataConfig,
+    merged_dataset: Dataset,
 ) -> tuple[Dataset, dict[str, Any]]:
     soft_temperature = float(getattr(data_config, "soft_label_temperature", 1.0))
     max_intensity_threshold = float(data_config.filter_max_intensity_lte)
@@ -149,7 +151,7 @@ def _prepare_dataset(
 
     keep_mask = np.asarray(transformed["_keep"], dtype=bool)
     removed_empty_count = int(
-        np.sum(np.asarray(transformed["_removed_empty_text"], dtype=np.int64))
+        np.sum(np.asarray(transformed["_removed_empty_text"], dtype=np.int64)),
     )
     removed_low_intensity_count = int(
         np.sum(np.asarray(transformed["_removed_low_intensity"], dtype=np.int64)),

@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -14,8 +15,6 @@ from emotionbridge.scripts.common import (
     save_json,
     write_parquet,
 )
-from pathlib import Path
-
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +129,7 @@ def _build_extractor(
 def _path_key(p: str) -> str:
     # Normalized, stable join key across relative/absolute and case differences.
     # (Windows is case-insensitive, so normcase matters.)
-    return os.path.normcase(os.path.realpath(os.path.abspath(os.path.expanduser(p))))
+    return os.path.normcase(os.path.realpath(Path(Path(p).expanduser()).resolve()))
 
 
 def _resolve_audio_path_fast(
@@ -142,12 +141,12 @@ def _resolve_audio_path_fast(
 ) -> str | None:
     # Fast path resolution without Path() overhead.
     p = audio_path
-    if os.path.isabs(p):
-        return p if os.path.exists(p) else None
+    if Path(p).is_absolute():
+        return p if Path(p).exists() else None
 
     for base in (audio_gen_output_dir, dataset_dir, cwd):
         cand = os.path.join(base, p)
-        if os.path.exists(cand):
+        if Path(cand).exists():
             return cand
 
     return None
@@ -174,7 +173,7 @@ def _format_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     out = df.reset_index()
     if "file" not in out.columns:
         raise RuntimeError(
-            "opensmile output missing 'file' index level; got columns: " + str(out.columns)
+            "opensmile output missing 'file' index level; got columns: " + str(out.columns),
         )
 
     # Keep only one row per file for Functionals (defensive).
@@ -279,7 +278,9 @@ def _maybe_resume_filter(
 
     if key_col not in existing.columns:
         logger.warning(
-            "Resume requested but existing output missing '%s': %s", key_col, output_path
+            "Resume requested but existing output missing '%s': %s",
+            key_col,
+            output_path,
         )
         return candidates
 
@@ -352,7 +353,8 @@ def _extract_jvnv(
         meta = _maybe_resume_filter(output_path=output_path, key_col="audio_path", candidates=meta)
 
     if meta.empty:
-        raise RuntimeError("No JVNV files to process (all missing or already extracted).")
+        msg = "No JVNV files to process (all missing or already extracted)."
+        raise RuntimeError(msg)
 
     files = meta["audio_path"].tolist()
 
@@ -370,7 +372,8 @@ def _extract_jvnv(
     )
 
     if batch.features.empty:
-        raise RuntimeError("No JVNV features were extracted.")
+        msg = "No JVNV features were extracted."
+        raise RuntimeError(msg)
 
     # Join features with metadata using a normalized key (do not change output 'audio_path')
     features = batch.features.copy()
@@ -434,7 +437,7 @@ def _extract_voicevox(
     # Resolve relative paths
     dataset_dir = str(triplet_dataset_path.parent.parent)
     agod = str(audio_gen_output_dir)
-    cwd = os.getcwd()
+    cwd = Path.cwd()
 
     audio_paths = dataset_df["audio_path"].astype(str).tolist()
     resolved: list[str | None] = [
@@ -446,7 +449,8 @@ def _extract_voicevox(
     missing_files = int(len(resolved) - sum(keep_mask))
 
     if sum(keep_mask) == 0:
-        raise RuntimeError("No VOICEVOX files to process (all audio missing).")
+        msg = "No VOICEVOX files to process (all audio missing)."
+        raise RuntimeError(msg)
 
     # Prepare metadata rows
     kept_df = dataset_df.loc[keep_mask].copy()
@@ -456,11 +460,14 @@ def _extract_voicevox(
 
     if resume:
         kept_df = _maybe_resume_filter(
-            output_path=output_path, key_col="audio_path", candidates=kept_df
+            output_path=output_path,
+            key_col="audio_path",
+            candidates=kept_df,
         )
 
     if kept_df.empty:
-        raise RuntimeError("No VOICEVOX files to process (already extracted).")
+        msg = "No VOICEVOX files to process (already extracted)."
+        raise RuntimeError(msg)
 
     files = kept_df["audio_path"].astype(str).tolist()
 
@@ -478,7 +485,8 @@ def _extract_voicevox(
     )
 
     if batch.features.empty:
-        raise RuntimeError("No VOICEVOX features were extracted.")
+        msg = "No VOICEVOX features were extracted."
+        raise RuntimeError(msg)
 
     # Keep the original script's column selection behavior
     metadata_columns = [

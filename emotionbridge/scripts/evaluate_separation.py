@@ -5,6 +5,7 @@ from itertools import combinations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
 from scipy.spatial.distance import pdist, squareform
 from scipy.stats import ttest_rel
 from sklearn.metrics import calinski_harabasz_score, silhouette_score
@@ -29,7 +30,6 @@ from emotionbridge.scripts.visualize import (
     plot_tier_boxplots,
     plot_tsne_scatter,
 )
-import pandas as pd
 
 if TYPE_CHECKING:
     from pathlib import Path
