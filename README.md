@@ -135,6 +135,24 @@ uv run python -m emotionbridge.scripts.prepare_generator_teacher
 
 # Generator 訓練
 uv run python -m emotionbridge.scripts.train_generator --config configs/generator.yaml
+
+# スタイルマッピング構築
+uv run python -m emotionbridge.scripts.build_style_mapping --config configs/experiment_config.yaml
+
+# スタイルマッピング手動調整（dry-run）
+uv run python -m emotionbridge.scripts.adjust_style_mapping \
+  --mapping-path artifacts/prosody/style_mapping.json \
+  --character zundamon \
+  --set anger=7,happy=1 \
+  --default-style-id 3 \
+  --dry-run
+
+# スタイルマッピング手動調整（本適用）
+uv run python -m emotionbridge.scripts.adjust_style_mapping \
+  --mapping-path artifacts/prosody/style_mapping.json \
+  --character zundamon \
+  --set anger=7,happy=1 \
+  --default-style-id 3
 ```
 
 ### Bridge: 統合推論（要 VOICEVOX Engine）

@@ -1,0 +1,146 @@
+[
+  {
+    "target_emotion": "anger",
+    "text": "ふざけるな、今すぐ謝れ！",
+    "audio_path": "demo/v2/anger.wav",
+    "dominant_emotion": "anger",
+    "confidence": 0.7627452611923218,
+    "style_id": 7,
+    "style_name": "ツンツン",
+    "control_params": {
+      "pitch_shift": -0.032447729259729385,
+      "pitch_range": 0.30175527930259705,
+      "speed": 0.06588762998580933,
+      "energy": 0.35928967595100403,
+      "pause_weight": 0.09942654520273209
+    },
+    "emotion_probs": {
+      "anger": 0.7627452611923218,
+      "disgust": 0.2293802797794342,
+      "fear": 0.0034066643565893173,
+      "happy": 0.001273888279683888,
+      "sad": 0.001855679089203477,
+      "surprise": 0.0013382906327024102
+    }
+  },
+  {
+    "target_emotion": "disgust",
+    "text": "本当に不快でたまらない。",
+    "audio_path": "demo/v2/disgust.wav",
+    "dominant_emotion": "disgust",
+    "confidence": 0.9970265030860901,
+    "style_id": 5,
+    "style_name": "セクシー",
+    "control_params": {
+      "pitch_shift": -0.3066134452819824,
+      "pitch_range": 0.06164281815290451,
+      "speed": -0.287418931722641,
+      "energy": -0.19781653583049774,
+      "pause_weight": -0.05659721791744232
+    },
+    "emotion_probs": {
+      "anger": 0.00023352658899966627,
+      "disgust": 0.9970265030860901,
+      "fear": 0.0008331734570674598,
+      "happy": 0.00014705347712151706,
+      "sad": 0.001717247418127954,
+      "surprise": 4.254076338838786e-05
+    }
+  },
+  {
+    "target_emotion": "fear",
+    "text": "夜道で足音がして怖くて動けない。",
+    "audio_path": "demo/v2/fear.wav",
+    "dominant_emotion": "fear",
+    "confidence": 0.9997617602348328,
+    "style_id": 5,
+    "style_name": "セクシー",
+    "control_params": {
+      "pitch_shift": 0.383476585149765,
+      "pitch_range": 0.3858567178249359,
+      "speed": 0.10071989893913269,
+      "energy": -0.3751746118068695,
+      "pause_weight": 0.07067818939685822
+    },
+    "emotion_probs": {
+      "anger": 8.658087608637288e-06,
+      "disgust": 5.416308340500109e-05,
+      "fear": 0.9997617602348328,
+      "happy": 7.0503033384738956e-06,
+      "sad": 6.639548519160599e-05,
+      "surprise": 0.00010198584641329944
+    }
+  },
+  {
+    "target_emotion": "happy",
+    "text": "みんなに祝ってもらえて最高に嬉しい！",
+    "audio_path": "demo/v2/happy.wav",
+    "dominant_emotion": "happy",
+    "confidence": 0.999248206615448,
+    "style_id": 1,
+    "style_name": "あまあま",
+    "control_params": {
+      "pitch_shift": 0.2508244216442108,
+      "pitch_range": -0.057750485837459564,
+      "speed": 0.009351768530905247,
+      "energy": -0.2804407477378845,
+      "pause_weight": -0.40503352880477905
+    },
+    "emotion_probs": {
+      "anger": 0.00013645942090079188,
+      "disgust": 9.778708044905216e-05,
+      "fear": 0.0001907390251290053,
+      "happy": 0.999248206615448,
+      "sad": 0.00012130830145906657,
+      "surprise": 0.00020543969003483653
+    }
+  },
+  {
+    "target_emotion": "sad",
+    "text": "大切な人がいなくなって悲しい。",
+    "audio_path": "demo/v2/sad.wav",
+    "dominant_emotion": "sad",
+    "confidence": 0.9998519420623779,
+    "style_id": 5,
+    "style_name": "セクシー",
+    "control_params": {
+      "pitch_shift": -0.31387650966644287,
+      "pitch_range": -0.4262455105781555,
+      "speed": 0.220317542552948,
+      "energy": -0.5179552435874939,
+      "pause_weight": 0.23502840101718903
+    },
+    "emotion_probs": {
+      "anger": 4.565190465655178e-07,
+      "disgust": 6.682144157821313e-05,
+      "fear": 6.852058140793815e-05,
+      "happy": 9.845960448728874e-06,
+      "sad": 0.9998519420623779,
+      "surprise": 2.3377465367957484e-06
+    }
+  },
+  {
+    "target_emotion": "surprise",
+    "text": "突然の知らせに驚いて声が出た。",
+    "audio_path": "demo/v2/surprise.wav",
+    "dominant_emotion": "surprise",
+    "confidence": 0.9998561143875122,
+    "style_id": 1,
+    "style_name": "あまあま",
+    "control_params": {
+      "pitch_shift": -0.05987827479839325,
+      "pitch_range": -0.36101141571998596,
+      "speed": -0.11099498718976974,
+      "energy": -0.15965205430984497,
+      "pause_weight": 0.19976264238357544
+    },
+    "emotion_probs": {
+      "anger": 3.190236839145655e-06,
+      "disgust": 4.103034825675422e-06,
+      "fear": 3.158509571221657e-05,
+      "happy": 9.987371595343575e-05,
+      "sad": 5.137639163876884e-06,
+      "surprise": 0.9998561143875122
+    }
+  }
+]
