@@ -8,7 +8,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.optim import AdamW
-from torch.utils.data import Dataset
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -33,30 +32,6 @@ from emotionbridge.training.classification_metrics import compute_classification
 logger = logging.getLogger(__name__)
 
 
-class EmotionClassifierTextDataset(Dataset):
-    def __init__(
-        self,
-        texts: list[str],
-        labels: np.ndarray,
-        soft_targets: np.ndarray | None = None,
-    ) -> None:
-        self._texts = texts
-        self._labels = labels
-        self._soft_targets = soft_targets
-
-    def __len__(self) -> int:
-        return len(self._texts)
-
-    def __getitem__(self, index: int) -> dict[str, Any]:
-        sample: dict[str, Any] = {
-            "text": self._texts[index],
-            "label": self._labels[index],
-        }
-        if self._soft_targets is not None:
-            sample["soft_target"] = self._soft_targets[index]
-        return sample
-
-
 class ClassifierBatchCollator:
     def __init__(self, tokenizer: Any, max_length: int) -> None:
         self.tokenizer = tokenizer
@@ -75,7 +50,13 @@ class ClassifierBatchCollator:
         # Trainer は 'labels' キーを期待する
         encoded["labels"] = torch.tensor(labels, dtype=torch.long)
 
-        if all("soft_target" in sample for sample in batch):
+        if all("soft_labels" in sample for sample in batch):
+            soft_targets = np.asarray(
+                [sample["soft_labels"] for sample in batch],
+                dtype=np.float32,
+            )
+            encoded["soft_labels"] = torch.tensor(soft_targets, dtype=torch.float32)
+        elif all("soft_target" in sample for sample in batch):
             soft_targets = np.asarray(
                 [sample["soft_target"] for sample in batch],
                 dtype=np.float32,
@@ -257,21 +238,9 @@ def train_classifier(config: ClassifierConfig) -> dict[str, Any] | None:
     tokenizer = AutoTokenizer.from_pretrained(config.model.pretrained_model_name)
     splits, metadata = build_classifier_splits(config.data)
 
-    train_dataset = EmotionClassifierTextDataset(
-        splits["train"].texts,
-        splits["train"].labels,
-        splits["train"].soft_targets,
-    )
-    val_dataset = EmotionClassifierTextDataset(
-        splits["val"].texts,
-        splits["val"].labels,
-        splits["val"].soft_targets,
-    )
-    test_dataset = EmotionClassifierTextDataset(
-        splits["test"].texts,
-        splits["test"].labels,
-        splits["test"].soft_targets,
-    )
+    train_dataset = splits["train"]
+    val_dataset = splits["val"]
+    test_dataset = splits["test"]
 
     id2label = dict(enumerate(JVNV_EMOTION_LABELS))
     label2id = {label: i for i, label in enumerate(JVNV_EMOTION_LABELS)}
@@ -290,7 +259,7 @@ def train_classifier(config: ClassifierConfig) -> dict[str, Any] | None:
 
     class_weights, class_weight_summary = _resolve_class_weights(
         config,
-        splits["train"].labels,
+        np.asarray(train_dataset["label"], dtype=np.int64),
         torch.device("cpu"),  # Trainer が適切に移動させるため一旦CPUで作成
     )
 
