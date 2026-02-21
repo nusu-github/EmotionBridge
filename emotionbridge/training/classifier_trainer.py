@@ -1,7 +1,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -53,12 +53,6 @@ class ClassifierBatchCollator:
         if all("soft_labels" in sample for sample in batch):
             soft_targets = np.asarray(
                 [sample["soft_labels"] for sample in batch],
-                dtype=np.float32,
-            )
-            encoded["soft_labels"] = torch.tensor(soft_targets, dtype=torch.float32)
-        elif all("soft_target" in sample for sample in batch):
-            soft_targets = np.asarray(
-                [sample["soft_target"] for sample in batch],
                 dtype=np.float32,
             )
             encoded["soft_labels"] = torch.tensor(soft_targets, dtype=torch.float32)
@@ -330,7 +324,7 @@ def train_classifier(config: ClassifierConfig) -> dict[str, Any] | None:
     trainer.train()
 
     # テストセットでの評価
-    test_metrics = trainer.evaluate(test_dataset, metric_key_prefix="test")
+    test_metrics = trainer.evaluate(cast("Any", test_dataset), metric_key_prefix="test")
 
     # Go/No-Go 判定
     go_no_go = _go_no_go_classifier(test_metrics, config)

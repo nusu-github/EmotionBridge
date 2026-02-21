@@ -96,6 +96,10 @@ uv run python main.py encode \
   --text "今日は楽しかった！"
 ```
 
+Phase 0 データ前処理仕様（2026-02 リファクタ後）:
+- WRIME ラベル入力は `avg_readers` のネスト構造のみ受け付ける（flatキー互換は廃止）。
+- train/val/test 分割は常に stratified split を使用し、成立しない場合は即時エラーで停止する。
+
 ### Phase 1: VOICEVOX 音声サンプル生成（要 VOICEVOX Engine）
 
 ```bash

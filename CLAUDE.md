@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 EmotionBridge は日本語テキストから感情を分類し、韻律特徴マッチングに基づく制御パラメータ生成と VOICEVOX TTS を組み合わせて感情音声を合成する変換エンジン。
 
 ```
-テキスト → 感情分類（6クラス） → DeterministicMixer（6D→5D） → スタイル選択 → VOICEVOX → 感情音声
+テキスト → 感情分類（6クラス） → DeterministicMixer（6D→5D） → スタイル選択 → VOICEVOX → (任意)DSP後処理 → 感情音声
 ```
 
 フェーズ構成:
@@ -15,7 +15,7 @@ EmotionBridge は日本語テキストから感情を分類し、韻律特徴マ
 - **Phase 0 (Classifier)**: BERT + 分類ヘッド、WRIME → 6感情クラス（anger, disgust, fear, happy, sad, surprise）の softmax 確率を出力
 - **Phase 1 (Audio Gen)**: VOICEVOX 音声サンプル生成パイプライン — (text, control_params, audio) triplet を作成
 - **Phase 3 (Prosody)**: JVNV/VOICEVOX の eGeMAPS 抽出・クロスドメイン整合・マッチング → 教師表 → DeterministicMixer
-- **Bridge**: 統合推論パイプライン — text → classifier → DeterministicMixer → style selection → VOICEVOX → WAV
+- **Bridge**: 統合推論パイプライン — text → classifier → DeterministicMixer → style selection → VOICEVOX → (optional) DSP → WAV
 
 ## Commands
 
@@ -53,19 +53,53 @@ uv run python -m emotionbridge.scripts.match_emotion_params --config configs/exp
 uv run python -m emotionbridge.scripts.evaluate_domain_gap --config configs/experiment_config.yaml
 uv run python -m emotionbridge.scripts.prepare_generator_teacher
 uv run python -m emotionbridge.scripts.train_generator --config configs/generator.yaml
+uv run python -m emotionbridge.scripts.build_style_mapping --config configs/experiment_config.yaml
+
+# --- スタイルマッピング手動調整 ---
+uv run python -m emotionbridge.scripts.adjust_style_mapping \
+  --mapping-path artifacts/prosody/style_mapping.json \
+  --character zundamon \
+  --set anger=7,happy=1 \
+  --default-style-id 3 \
+  --dry-run  # 本適用時は --dry-run を外す
 
 # --- Bridge: 統合推論（要 VOICEVOX Engine） ---
 uv run python main.py bridge \
   --text "今日は楽しかった！" \
   --output output.wav \
   --character zundamon
+# DSP後処理有効化:
+uv run python main.py bridge \
+  --text "今日は楽しかった！" \
+  --output output_dsp.wav \
+  --character zundamon \
+  --enable-dsp \
+  --dsp-f0-extractor harvest
+
+# --- 評価 ---
+# 主観評価（刺激生成 → 回答CSV集計）
+uv run python -m emotionbridge.scripts.prepare_subjective_eval \
+  --dataset-path artifacts/audio_gen/dataset/triplet_dataset.parquet \
+  --output-dir artifacts/prosody/subjective_eval/pilot_v01 \
+  --character zundamon \
+  --classifier-checkpoint artifacts/classifier/checkpoints/best_model \
+  --generator-checkpoint artifacts/generator/checkpoints/best_generator.pt \
+  --style-mapping artifacts/prosody/style_mapping.json
+uv run python -m emotionbridge.scripts.analyze_subjective_eval \
+  --eval-dir artifacts/prosody/subjective_eval/pilot_v01
+
+# 定量評価（Roundtrip: PESQ / MCD / F0 RMSE）
+uv run python -m emotionbridge.scripts.evaluate_roundtrip \
+  --baseline-manifest demo/v2/manifest.json \
+  --candidate-manifest demo/v2-dsp/manifest.json \
+  --output-dir artifacts/prosody/roundtrip_eval/v2_dsp
 ```
 
-正式なテストスイートはない。Smoke config（`classifier_smoke.yaml`, `audio_gen_smoke.yaml`, `experiment_smoke.yaml`）と CLI 手動実行でテストする。
+正式なテストスイートはない。Smoke config（`classifier_smoke.yaml`, `audio_gen_smoke.yaml`, `experiment_smoke.yaml`, `generator_smoke.yaml`）と CLI 手動実行でテストする。
 
 ## Tooling
 
-Ruff: `line-length = 100`。`E501` は無視。`RUF001`/`RUF002`/`RUF003`（全角文字系）も無視（日本語テキスト処理のため）。`ty check` は明示的な設定なしでデフォルト動作。
+Ruff: `line-length = 100`。`E501` は無視。`RUF001`/`RUF002`/`RUF003`（全角文字系）も無視（日本語テキスト処理のため）。`PLC0415`（lazy import）も許容。`ty check` は明示的な設定なしでデフォルト動作。
 
 ## Architecture
 
@@ -73,13 +107,17 @@ Ruff: `line-length = 100`。`E501` は無視。`RUF001`/`RUF002`/`RUF003`（全�
 
 **感情空間**（6D softmax 確率）と**制御空間**（5D TTS パラメータ `[-1, +1]`）を分離。感情空間は固定で、TTS アダプタ（`VoicevoxAdapter`）のみを差し替えることで TTS エンジン非依存を実現する。
 
-### Emotion Labels (2 sets)
+### Emotion Labels and Constants
 
-**WRIME 8D** (legacy, `EMOTION_LABELS`): `[joy, sadness, anticipation, surprise, anger, fear, disgust, trust]`
+**WRIME 8D** (legacy, `_WRIME_LABELS` in `data/wrime_classifier.py`): `[joy, sadness, anticipation, surprise, anger, fear, disgust, trust]` — データ読み込み専用の private 定数。
 
-**JVNV 6D** (current, `JVNV_EMOTION_LABELS`): `[anger, disgust, fear, happy, sad, surprise]` — 全モジュールで使用。`WRIME_TO_JVNV_INDICES = [4, 6, 5, 0, 1, 3]` で 8D→6D 変換。
+**JVNV 6D** (current, `JVNV_EMOTION_LABELS`): `[anger, disgust, fear, happy, sad, surprise]` — 全モジュールで使用。`_WRIME_TO_JVNV_INDICES = [4, 6, 5, 0, 1, 3]` で 8D→6D 変換。
 
 制御空間 (`CONTROL_PARAM_NAMES`): `[pitch_shift, pitch_range, speed, energy, pause_weight]`
+
+DSP制御空間 (`DSP_PARAM_NAMES`): `[jitter_amount, shimmer_amount, aperiodicity_shift, spectral_tilt_shift]`
+
+感情円環モデル座標 (`COMMON6_CIRCUMPLEX_COORDS`): valence-arousal 2D 空間上の各感情座標。DSP マッピングで使用。
 
 Go/No-Go 評価で重視: `KEY_EMOTION_LABELS = ["anger", "happy", "sad"]`
 
@@ -98,7 +136,7 @@ Phase 3 スクリプトは `emotionbridge/scripts/common.py::load_experiment_con
 
 ```
 WRIME (shunk031/wrime on HF Hub)
-  → data/wrime.py: filter (max_intensity > 1), normalize (/3.0), 8D→6D変換, stratify split
+  → data/wrime_classifier.py: batched preprocessing, filter (max_intensity > 1), 8D→6D変換, stratify split
   → training/classifier_trainer.py:
       EmotionTrainer (HF Trainer 拡張) + ClassifierBatchCollator
       CrossEntropy + inverse_frequency class weighting
@@ -108,14 +146,14 @@ WRIME (shunk031/wrime on HF Hub)
   → inference/encoder.py: EmotionEncoder → encode() returns numpy (6,)
 ```
 
-分類器はカスタムモデルクラスではなく `AutoModelForSequenceClassification` を直接使用。`model/classifier.py` は廃止済み。`model/` には `DeterministicMixer` と `ParameterGenerator` のみ残る。
+分類器はカスタムモデルクラスではなく `AutoModelForSequenceClassification` を直接使用。`model/` には `DeterministicMixer` と `ParameterGenerator` のみ残る。
 
 Differential learning rates: `_split_model_parameters()` で BERT backbone (`bert_lr: 2e-5`) と classification head (`head_lr: 1e-3`) を分離。
 
 ### Phase 1: Audio Gen Data Flow
 
 ```
-TextSelector.select() → stratified sampling from WRIME
+load_jvnv_texts() → JVNV transcription から感情分類付きテキスト選択
   → GridSampler.sample() → LHS (128 samples) or Grid in 5D [-1, +1]^5
   → VoicevoxClient.audio_query() → VoicevoxAdapter.apply(query, control_vec) → synthesis()
   → AudioValidator.validate() → TripletRecord
@@ -129,7 +167,7 @@ Parquet 列規約: `emotion_*`, `ctrl_*`, `vv_*`。列名変更は下流に影�
 `emotionbridge/inference/bridge_pipeline.py`:
 
 ```
-EmotionEncoder(6D probs) → DeterministicMixer(5D params) → RuleBasedStyleSelector(style_id) → VOICEVOX → WAV
+EmotionEncoder(6D probs) → DeterministicMixer(5D params) → RuleBasedStyleSelector(style_id) → VOICEVOX → (optional) EmotionDSPProcessor → WAV
 ```
 
 - **DeterministicMixer** (`model/generator.py`): `tanh(emotion_probs @ teacher_matrix)` — 6×5 教師行列の線形混合。学習パラメータなし
@@ -138,6 +176,16 @@ EmotionEncoder(6D probs) → DeterministicMixer(5D params) → RuleBasedStyleSel
 - チェックポイントの `model_type` フィールドで DeterministicMixer / ParameterGenerator を自動判別
 - 信頼度が `fallback_threshold`（default: 0.3）未満 → デフォルトスタイル＋ゼロ ControlVector にフォールバック
 - ファクトリ: `create_pipeline()` (async)
+
+### DSP Post-processing Layer
+
+`emotionbridge/dsp/`: WORLD 解析/再合成ベースの声質制御。Bridge パイプラインで `--enable-dsp` 時に適用。
+
+- **EmotionDSPMapper** (`dsp/mapper.py`): 感情確率 6D → `DSPControlVector` 4D への変換。JVNV eGeMAPS 特徴量（jitter, shimmer, HNR, spectral flux 等）の感情別統計から制御量を算出
+- **EmotionDSPProcessor** (`dsp/processor.py`): WORLD (pyworld) で F0/SP/AP を解析し、jitter・shimmer・aperiodicity・spectral tilt を操作して再合成。F0 抽出は `dio` または `harvest` を選択可能
+- **DSPControlVector** (`dsp/types.py`): 4D制御ベクトル `[jitter_amount, shimmer_amount, aperiodicity_shift, spectral_tilt_shift]`
+- 全パラメータがゼロに近い場合（`<= 1e-8`）は処理をスキップ
+- 決定論的再現性のため seed ベースの RNG を使用
 
 ### TTS Layer
 
@@ -159,8 +207,11 @@ HuggingFace Accelerate で mixed precision (`fp16`/`bf16`)、gradient accumulati
 
 ## Important Invariants
 
-- WRIME ラベルは `LABEL_SCALE_MAX=3.0` で [0,1] に正規化。分類器は argmax でクラスラベルに変換
+- WRIME ラベル入力は `avg_readers` ネスト構造のみを受け付ける（flatキー互換は廃止）
+- train/val/test 分割は常に stratified split。成立しない場合は fail-fast で停止する
+- WRIME ラベルは相対強度を softmax 風に正規化して soft-label を生成可能。分類器の標準ラベルは argmax で生成
 - 制御空間は常に 5D `ControlVector` / `[-1, 1]`。TTS 固有値変換は `VoicevoxAdapter` が担当
+- DSP 制御空間は 4D `DSPControlVector`。`EmotionDSPMapper` が感情→DSPパラメータへ変換
 - 各フェーズは `save_effective_config()` で実行時設定を成果物へ保存する前提。出力構造を変える変更は慎重に
 - CLI 拡張時は `emotionbridge/cli.py` の parser 定義と command dispatch の両方を更新する
 - 分類器チェックポイントは HF 標準形式（`config.json`, `model.safetensors` 等）。`AutoModelForSequenceClassification.from_pretrained()` でロード

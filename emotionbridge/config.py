@@ -10,11 +10,8 @@ class DataConfig:
     dataset_name: str = "shunk031/wrime"
     dataset_config_name: str = "ver1"
     text_field: str = "sentence"
-    label_source: str = "avg_readers"
     max_length: int = 128
-    use_official_split: bool = False
     filter_max_intensity_lte: int = 1
-    stratify_after_filter: bool = True
     train_ratio: float = 0.8
     val_ratio: float = 0.1
     test_ratio: float = 0.1

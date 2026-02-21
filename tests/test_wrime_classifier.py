@@ -4,6 +4,7 @@ from unittest.mock import patch
 import unittest
 
 from datasets import Dataset, DatasetDict
+import pytest
 
 from emotionbridge.config import ClassifierDataConfig
 from emotionbridge.data.wrime_classifier import (
@@ -71,6 +72,41 @@ def _build_mock_dataset() -> DatasetDict:
     )
 
 
+def _build_flat_label_dataset() -> DatasetDict:
+    rows: list[dict[str, object]] = []
+    for sample_index in range(4):
+        base = {
+            "sentence": f"flat-{sample_index}",
+        }
+        base.update({f"avg_readers_{label}": 0.2 for label in _WRIME_LABELS})
+        base["avg_readers_joy"] = 3.0
+        rows.append(base)
+
+    return DatasetDict(
+        {
+            "train": Dataset.from_list(rows),
+        },
+    )
+
+
+def _build_stratify_failure_dataset() -> DatasetDict:
+    rows: list[dict[str, object]] = []
+    for label_index in range(6):
+        rows.extend(
+            {
+                "sentence": f"s-{label_index}-{sample_index}",
+                "avg_readers": _make_label_dict(label_index, intensity=3.0),
+            }
+            for sample_index in range(2)
+        )
+
+    return DatasetDict(
+        {
+            "train": Dataset.from_list(rows),
+        },
+    )
+
+
 class TestWrimeClassifier(unittest.TestCase):
     def test_build_classifier_splits_argmax(self) -> None:
         config = ClassifierDataConfig(
@@ -82,7 +118,6 @@ class TestWrimeClassifier(unittest.TestCase):
             random_seed=42,
             filter_max_intensity_lte=1,
             label_conversion="argmax",
-            stratify_after_filter=True,
         )
 
         with patch(
@@ -93,9 +128,12 @@ class TestWrimeClassifier(unittest.TestCase):
 
         assert set(splits.keys()) == {"train", "val", "test"}
         assert sum(split.num_rows for split in splits.values()) == metadata["num_records_filtered"]
-        assert metadata["num_records_total"] == 38
+        assert metadata["num_records_loaded"] == 39
+        assert metadata["num_records_non_empty_text"] == 38
         assert metadata["num_records_filtered"] == 36
-        assert metadata["num_records_removed"] == 2
+        assert metadata["num_records_removed"] == 3
+        assert metadata["num_records_removed_empty_text"] == 1
+        assert metadata["num_records_removed_low_intensity"] == 2
         assert "soft_labels" not in splits["train"].column_names
 
         filtered_count = sum(metadata["class_distribution_filtered"].values())
@@ -117,7 +155,6 @@ class TestWrimeClassifier(unittest.TestCase):
             filter_max_intensity_lte=1,
             label_conversion="soft_label",
             soft_label_temperature=0.7,
-            stratify_after_filter=True,
         )
 
         with patch(
@@ -155,6 +192,43 @@ class TestWrimeClassifier(unittest.TestCase):
             else:
                 msg = "Expected ValueError for invalid label_conversion"
                 raise AssertionError(msg)
+
+    def test_legacy_flat_label_schema_raises(self) -> None:
+        config = ClassifierDataConfig(
+            dataset_name="dummy",
+            dataset_config_name="dummy",
+            train_ratio=0.8,
+            val_ratio=0.1,
+            test_ratio=0.1,
+            filter_max_intensity_lte=1,
+            label_conversion="argmax",
+        )
+
+        with patch(
+            "emotionbridge.data.wrime_classifier.load_dataset",
+            return_value=_build_flat_label_dataset(),
+        ):
+            with pytest.raises(KeyError, match="label source 'avg_readers' not found"):
+                build_classifier_splits(config)
+
+    def test_stratified_split_fail_fast(self) -> None:
+        config = ClassifierDataConfig(
+            dataset_name="dummy",
+            dataset_config_name="dummy",
+            train_ratio=0.5,
+            val_ratio=0.25,
+            test_ratio=0.25,
+            random_seed=42,
+            filter_max_intensity_lte=1,
+            label_conversion="argmax",
+        )
+
+        with patch(
+            "emotionbridge.data.wrime_classifier.load_dataset",
+            return_value=_build_stratify_failure_dataset(),
+        ):
+            with pytest.raises(ValueError, match="Stratified split failed at 'val_test'"):
+                build_classifier_splits(config)
 
 
 if __name__ == "__main__":

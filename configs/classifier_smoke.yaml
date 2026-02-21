@@ -2,11 +2,8 @@ data:
   dataset_name: shunk031/wrime
   dataset_config_name: ver1
   text_field: sentence
-  label_source: avg_readers
   max_length: 128
-  use_official_split: false
   filter_max_intensity_lte: 1
-  stratify_after_filter: true
   train_ratio: 0.8
   val_ratio: 0.1
   test_ratio: 0.1
