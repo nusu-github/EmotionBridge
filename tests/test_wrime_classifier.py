@@ -89,17 +89,21 @@ def _build_flat_label_dataset() -> DatasetDict:
     )
 
 
-def _build_stratify_failure_dataset() -> DatasetDict:
-    rows: list[dict[str, object]] = []
-    for label_index in range(6):
-        rows.extend(
-            {
-                "sentence": f"s-{label_index}-{sample_index}",
-                "avg_readers": _make_label_dict(label_index, intensity=3.0),
-            }
-            for sample_index in range(2)
-        )
-
+def _build_cluster_failure_dataset() -> DatasetDict:
+    rows = [
+        {
+            "sentence": "a",
+            "avg_readers": _make_label_dict(0, intensity=3.0),
+        },
+        {
+            "sentence": "b",
+            "avg_readers": _make_label_dict(1, intensity=3.0),
+        },
+        {
+            "sentence": "c",
+            "avg_readers": _make_label_dict(2, intensity=3.0),
+        },
+    ]
     return DatasetDict(
         {
             "train": Dataset.from_list(rows),
@@ -108,7 +112,7 @@ def _build_stratify_failure_dataset() -> DatasetDict:
 
 
 class TestWrimeClassifier(unittest.TestCase):
-    def test_build_classifier_splits_argmax(self) -> None:
+    def test_build_classifier_splits_soft_only(self) -> None:
         config = ClassifierDataConfig(
             dataset_name="dummy",
             dataset_config_name="dummy",
@@ -117,7 +121,7 @@ class TestWrimeClassifier(unittest.TestCase):
             test_ratio=0.25,
             random_seed=42,
             filter_max_intensity_lte=1,
-            label_conversion="argmax",
+            soft_label_temperature=0.7,
         )
 
         with patch(
@@ -134,64 +138,60 @@ class TestWrimeClassifier(unittest.TestCase):
         assert metadata["num_records_removed"] == 3
         assert metadata["num_records_removed_empty_text"] == 1
         assert metadata["num_records_removed_low_intensity"] == 2
-        assert "soft_labels" not in splits["train"].column_names
+        assert metadata["soft_label_temperature"] == pytest.approx(0.7)
+        assert metadata["num_clusters"] >= 2
+        assert sum(metadata["cluster_distribution"].values()) == metadata["num_records_filtered"]
 
-        filtered_count = sum(metadata["class_distribution_filtered"].values())
-        assert filtered_count == metadata["num_records_filtered"]
+        for split in splits.values():
+            assert "soft_labels" in split.column_names
+            assert "label" not in split.column_names
+            for vector in split["soft_labels"]:
+                assert len(vector) == 6
+                assert abs(sum(vector) - 1.0) < 1e-5
 
         report = build_classifier_data_report(splits, metadata)
         assert report["split_sizes"]["train"] == splits["train"].num_rows
         assert report["split_sizes"]["val"] == splits["val"].num_rows
         assert report["split_sizes"]["test"] == splits["test"].num_rows
+        assert "soft_distribution" in report
 
-    def test_build_classifier_splits_soft_label(self) -> None:
-        config = ClassifierDataConfig(
+    def test_soft_label_temperature_changes_sharpness(self) -> None:
+        low_temp = ClassifierDataConfig(
             dataset_name="dummy",
             dataset_config_name="dummy",
             train_ratio=0.5,
             val_ratio=0.25,
             test_ratio=0.25,
-            random_seed=7,
+            random_seed=42,
             filter_max_intensity_lte=1,
-            label_conversion="soft_label",
             soft_label_temperature=0.7,
         )
-
-        with patch(
-            "emotionbridge.data.wrime_classifier.load_dataset",
-            return_value=_build_mock_dataset(),
-        ):
-            splits, metadata = build_classifier_splits(config)
-
-        assert metadata["label_conversion"] == "soft_label"
-        for split in splits.values():
-            assert "soft_labels" in split.column_names
-            for vector in split["soft_labels"]:
-                assert len(vector) == 6
-                assert abs(sum(vector) - 1.0) < 1e-5
-
-    def test_invalid_label_conversion_raises(self) -> None:
-        config = ClassifierDataConfig(
+        high_temp = ClassifierDataConfig(
             dataset_name="dummy",
             dataset_config_name="dummy",
             train_ratio=0.5,
             val_ratio=0.25,
             test_ratio=0.25,
+            random_seed=42,
             filter_max_intensity_lte=1,
-            label_conversion="invalid",
+            soft_label_temperature=1.5,
         )
 
         with patch(
             "emotionbridge.data.wrime_classifier.load_dataset",
             return_value=_build_mock_dataset(),
         ):
-            try:
-                build_classifier_splits(config)
-            except ValueError:
-                pass
-            else:
-                msg = "Expected ValueError for invalid label_conversion"
-                raise AssertionError(msg)
+            low_splits, _ = build_classifier_splits(low_temp)
+
+        with patch(
+            "emotionbridge.data.wrime_classifier.load_dataset",
+            return_value=_build_mock_dataset(),
+        ):
+            high_splits, _ = build_classifier_splits(high_temp)
+
+        low_max = max(max(row) for row in low_splits["train"]["soft_labels"])
+        high_max = max(max(row) for row in high_splits["train"]["soft_labels"])
+        assert low_max > high_max
 
     def test_legacy_flat_label_schema_raises(self) -> None:
         config = ClassifierDataConfig(
@@ -201,7 +201,6 @@ class TestWrimeClassifier(unittest.TestCase):
             val_ratio=0.1,
             test_ratio=0.1,
             filter_max_intensity_lte=1,
-            label_conversion="argmax",
         )
 
         with patch(
@@ -211,7 +210,7 @@ class TestWrimeClassifier(unittest.TestCase):
             with pytest.raises(KeyError, match="label source 'avg_readers' not found"):
                 build_classifier_splits(config)
 
-    def test_stratified_split_fail_fast(self) -> None:
+    def test_stratified_split_fail_fast_when_clusters_invalid(self) -> None:
         config = ClassifierDataConfig(
             dataset_name="dummy",
             dataset_config_name="dummy",
@@ -220,14 +219,16 @@ class TestWrimeClassifier(unittest.TestCase):
             test_ratio=0.25,
             random_seed=42,
             filter_max_intensity_lte=1,
-            label_conversion="argmax",
         )
 
         with patch(
             "emotionbridge.data.wrime_classifier.load_dataset",
-            return_value=_build_stratify_failure_dataset(),
+            return_value=_build_cluster_failure_dataset(),
         ):
-            with pytest.raises(ValueError, match="Stratified split failed at 'val_test'"):
+            with pytest.raises(
+                ValueError,
+                match="Failed to create valid stratification clusters",
+            ):
                 build_classifier_splits(config)
 
 

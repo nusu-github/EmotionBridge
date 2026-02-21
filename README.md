@@ -98,7 +98,9 @@ uv run python main.py encode \
 
 Phase 0 データ前処理仕様（2026-02 リファクタ後）:
 - WRIME ラベル入力は `avg_readers` のネスト構造のみ受け付ける（flatキー互換は廃止）。
-- train/val/test 分割は常に stratified split を使用し、成立しない場合は即時エラーで停止する。
+- 学習ターゲットは soft label（6D確率分布）を常時使用し、hard label は保持しない。
+- train/val/test 分割は soft-labelクラスタ層化の stratified split を使用し、成立しない場合は即時エラーで停止する。
+- 分類器学習は新規学習前提で、転移学習・class weight・Phase 0内Go/No-Go判定は実装しない。
 
 ### Phase 1: VOICEVOX 音声サンプル生成（要 VOICEVOX Engine）
 

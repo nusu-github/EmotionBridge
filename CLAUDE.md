@@ -134,7 +134,7 @@ Go/No-Go 評価で重視: `KEY_EMOTION_LABELS = ["anger", "happy", "sad"]`
 
 `configs/*.yaml` → `config.py` dataclasses。`load_config()` のキー判定ロジック:
 - `voicevox` キー → `AudioGenConfig`
-- `num_classes` / `label_conversion` / `class_weight_mode` キー → `ClassifierConfig`
+- `num_classes` / `soft_label_temperature` / `bert_lr` / `head_lr` キー → `ClassifierConfig`
 - いずれもなし → `ValueError`
 
 Phase 3 スクリプトは `emotionbridge/scripts/common.py::load_experiment_config` で独自に設定を読む（`ExperimentConfig` → `PathsConfig`, `V01Config`, `V02Config`, `V03Config` 等のネスト構造）。
@@ -143,11 +143,10 @@ Phase 3 スクリプトは `emotionbridge/scripts/common.py::load_experiment_con
 
 ```
 WRIME (shunk031/wrime on HF Hub)
-  → data/wrime_classifier.py: batched preprocessing, filter (max_intensity > 1), 8D→6D変換, stratify split
+  → data/wrime_classifier.py: batched preprocessing, filter (max_intensity > 1), 8D→6D変換, soft-label生成, soft-labelクラスタ層化split
   → training/classifier_trainer.py:
       EmotionTrainer (HF Trainer 拡張) + ClassifierBatchCollator
-      CrossEntropy + inverse_frequency class weighting
-      label_conversion: "argmax"(default) or "soft_label"(KL divergence + temperature scaling)
+      soft-label cross entropy（hard label / class weight / transfer learning / Go-NoGo は未使用）
   → AutoModelForSequenceClassification (HF 標準モデル)
   → artifacts/classifier/checkpoints/best_model (HF 標準形式で保存)
   → inference/encoder.py: EmotionEncoder → encode() returns numpy (6,)
@@ -214,8 +213,8 @@ HuggingFace Accelerate で mixed precision (`fp16`/`bf16`)、gradient accumulati
 ## Important Invariants
 
 - WRIME ラベル入力は `avg_readers` ネスト構造のみを受け付ける（flatキー互換は廃止）
-- train/val/test 分割は常に stratified split。成立しない場合は fail-fast で停止する
-- WRIME ラベルは相対強度を softmax 風に正規化して soft-label を生成可能。分類器の標準ラベルは argmax で生成
+- train/val/test 分割は常に soft-labelクラスタによる stratified split。成立しない場合は fail-fast で停止する
+- WRIME ラベルは相対強度を softmax 風に正規化し、分類器学習は soft-label を常時使用する（hard labelは保持しない）
 - 制御空間は常に 5D `ControlVector` / `[-1, 1]`。TTS 固有値変換は `VoicevoxAdapter` が担当
 - DSP 制御空間は 4D `DSPControlVector`。`EmotionDSPMapper` が感情→DSPパラメータへ変換
 - 各フェーズは `save_effective_config()` で実行時設定を成果物へ保存する前提。出力構造を変える変更は慎重に

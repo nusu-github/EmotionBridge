@@ -26,14 +26,12 @@ class ModelConfig:
 
 @dataclass(slots=True)
 class ClassifierDataConfig(DataConfig):
-    label_conversion: str = "argmax"
     soft_label_temperature: float = 1.0
 
 
 @dataclass(slots=True)
 class ClassifierModelConfig(ModelConfig):
     num_classes: int = 6
-    transfer_from: str | None = None
 
 
 @dataclass(slots=True)
@@ -52,18 +50,6 @@ class ClassifierTrainConfig:
     log_every_steps: int = 50
     gradient_accumulation_steps: int = 1
     mixed_precision: str = "no"
-    class_weight_mode: str = "inverse_frequency"
-    class_weights: list[float] | None = None
-    use_weighted_sampler: bool = False
-
-
-@dataclass(slots=True)
-class ClassifierEvalConfig:
-    go_macro_f1_min: float = 0.40
-    go_key_emotion_f1_min: float = 0.50
-    key_emotions: list[str] = field(
-        default_factory=lambda: ["anger", "happy", "sad"],
-    )
 
 
 @dataclass(slots=True)
@@ -71,7 +57,6 @@ class ClassifierConfig:
     data: ClassifierDataConfig = field(default_factory=ClassifierDataConfig)
     model: ClassifierModelConfig = field(default_factory=ClassifierModelConfig)
     train: ClassifierTrainConfig = field(default_factory=ClassifierTrainConfig)
-    eval: ClassifierEvalConfig = field(default_factory=ClassifierEvalConfig)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -234,17 +219,17 @@ def load_config(
     train_raw = raw.get("train") or {}
     if (
         "num_classes" in model_raw
-        or "label_conversion" in data_raw
-        or "class_weight_mode" in train_raw
+        or "soft_label_temperature" in data_raw
+        or "bert_lr" in train_raw
+        or "head_lr" in train_raw
     ):
         return ClassifierConfig(
             data=_build_section(ClassifierDataConfig, data_raw),
             model=_build_section(ClassifierModelConfig, model_raw),
             train=_build_section(ClassifierTrainConfig, train_raw),
-            eval=_build_section(ClassifierEvalConfig, raw.get("eval")),
         )
 
-    msg = "Unknown config format. Expected AudioGenConfig (voicevox key) or ClassifierConfig (num_classes/label_conversion/class_weight_mode key)."
+    msg = "Unknown config format. Expected AudioGenConfig (voicevox key) or ClassifierConfig (num_classes/soft_label_temperature/bert_lr/head_lr key)."
     raise ValueError(msg)
 
 

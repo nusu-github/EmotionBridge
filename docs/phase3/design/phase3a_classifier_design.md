@@ -4,6 +4,7 @@
 > **設計対象**: Phase 0 再設計 — 8D Plutchik回帰 → 6クラス感情分類
 > **作成日**: 2026-02-18
 > **ステータス**: 初版
+> **追記（2026-02-21）**: 現行実装は soft label学習固定。argmaxラベル学習、転移学習、class weight、Phase 0単体Go/No-Goは廃止済み。
 
 ---
 
@@ -29,92 +30,37 @@
 |--------|------|
 | EB3-C01-01-001 | joy→happy, sadness→sad, anger→anger, fear→fear, disgust→disgust, surprise→surpriseの直接対応 |
 | EB3-C01-01-002 | anticipation, trustを除外 |
-| EB3-C01-01-003 | **決定**: WRIMEの連続強度→6クラスラベルはargmax方式を本採用。soft labelは比較実験で評価 |
+| EB3-C01-01-003 | **決定**: WRIMEの連続強度→6感情soft labelを本採用し、学習はsoft targetで統一 |
 | EB3-C01-02-001 | sbintuitions/modernbert-ja-70m を使用 |
 | EB3-C01-02-002 | 6クラス分類ヘッド（Softmax） |
-| EB-P0-01-04-002 | Go/No-Go: マクロF1 >= 0.40、anger/happy/sad個別F1 >= 0.50 |
+| EB-P0-01-04-002 | Phase 0単体の固定閾値Go/No-Goは廃止し、確率分布指標を継続監視 |
 
 ---
 
-## 2. WRIMEラベル変換方式の比較検討（EB3-C01-01-003）
+## 2. WRIMEラベル変換方式（確定仕様）
 
-WRIMEコーパスは8感情（Plutchik）の客観強度（avg_readers、0--3の連続値）を持つ。これを6クラスの離散ラベルに変換する方式を以下の3候補で比較検討する。
+WRIMEコーパスは8感情（Plutchik）の客観強度（avg_readers、0--3の連続値）を持つ。EmotionBridgeでは、これを6感情（JVNV順）へ写像した後、**soft label（確率分布）を唯一の教師信号**として使用する。
 
-### 2.1 候補方式
+### 2.1 確定方針
 
-#### 方式A: argmax方式
+- 学習データは hard label（argmax）を保持しない
+- soft labelは強度ベクトルの正規化により生成し、温度パラメータで分布の鋭さを制御する
+- 損失関数は soft target に対する cross entropy を採用する
 
-6感情（joy, sadness, anger, fear, disgust, surprise）に対応するWRIME列を抽出し、その中でargmaxをとったクラスをラベルとする。
+### 2.2 データ分割
 
-```python
-# 擬似コード
-six_emotions = raw[["joy", "sadness", "anger", "fear", "disgust", "surprise"]]
-label = six_emotions.argmax()
-```
+- train/val/test は stratified split を維持する
+- 層化キーは hard label ではなく **soft labelクラスタID** とする
+- 層化が成立しない場合は fail-fast で停止する
 
-#### 方式B: 閾値方式
+### 2.3 評価指標
 
-6感情の中で、閾値（例: 強度 >= 2）を超える感情がちょうど1つの場合のみ採用。複数超えた場合はargmaxでtie-break。いずれも超えない場合は除外。
+- mean KL divergence
+- mean cross entropy
+- Brier score
+- key emotion MAE / per-emotion MAE
 
-```python
-above_threshold = six_emotions[six_emotions >= threshold]
-if len(above_threshold) == 1:
-    label = above_threshold.index[0]
-elif len(above_threshold) > 1:
-    label = above_threshold.argmax()
-else:
-    # 除外（データ量が減る）
-```
-
-#### 方式C: Soft Label方式（確率的変換）
-
-6感情の強度をL1正規化して確率分布（soft label）とし、KL-divergence損失またはcross-entropy with soft targetsで学習する。
-
-```python
-six_intensities = raw[["joy", "sadness", "anger", "fear", "disgust", "surprise"]]
-soft_label = six_intensities / six_intensities.sum()  # L1正規化
-# 損失: KL(model_output || soft_label)
-```
-
-### 2.2 比較表
-
-| 評価軸 | 方式A: argmax | 方式B: 閾値 | 方式C: Soft Label |
-|--------|--------------|-------------|-------------------|
-| **実装複雑度** | 低（1行） | 中（条件分岐） | 中（損失関数変更） |
-| **データ量** | フィルタ後全量使用 | 閾値未満サンプルが脱落しデータ量が減少 | フィルタ後全量使用 |
-| **ラベルノイズ** | 低強度の僅差でクラスが決まるケースあり | 閾値以上のみなのでノイズは低い | 強度分布を保持するためノイズに頑健 |
-| **Softmax出力との整合性** | hard labelだが標準的 | hard label | soft labelと自然に整合 |
-| **解釈性** | 明確（最大強度の感情） | 明確（閾値以上の感情） | やや不明瞭（分布学習） |
-| **クラス不均衡への影響** | 元データの分布を反映 | 閾値で偏りが変わる可能性 | 元データの分布を反映 |
-| **推論時の出力** | Softmax確率（argmax分類と同じ構造） | 同上 | Softmax確率（ただし学習時はsoft target） |
-| **先行研究での使用実績** | 感情分類で最も一般的 | 限定的 | knowledge distillation等で実績あり |
-
-### 2.3 決定方針（2026-02-18）
-
-**決定**: Phase 3a本線は方式A（argmax + CrossEntropyLoss）を採用する。  
-方式C（soft label）は性能改善の有無を確認する補助実験として扱う。  
-方式B（閾値）はデータ量減少リスクが高いため採用しない。
-
-決定理由:
-
-1. Go/No-Go指標（accuracy/macro F1/感情別F1）がhard label評価前提であり、本線と整合する
-2. 実装を最小化してベースラインを早期確立できる
-3. 連続強度情報の活用可否はsoft label比較で切り分けて評価できる
-
-### 2.4 比較実験計画（補助）
-
-argmax本採用を前提に、soft label方式の上乗せ効果のみを比較する。
-
-| 実験 | 方式 | 損失関数 | 評価指標 | 期待する知見 |
-|------|------|----------|----------|-------------|
-| Exp-A（必須） | argmax | CrossEntropyLoss | accuracy, macro F1, 感情別F1 | 本線ベースライン |
-| Exp-C1（任意） | soft label (L1正規化) | KL-divergence | accuracy, macro F1, 感情別F1 | soft labelの効果 |
-| Exp-C2（任意） | soft label (温度付き) | KL-divergence (T=2.0) | accuracy, macro F1, 感情別F1 | 温度パラメータの影響 |
-
-判定基準:
-
-- 本採用方式はargmaxで固定
-- soft labelが `macro F1 +0.02` 以上の改善を示し、かつ key emotion（anger/happy/sad）F1を悪化させない場合のみ拡張採用を検討
+Phase 0単体では固定閾値によるGo/No-Go判定を行わず、指標を記録して継続監視する。
 
 ---
 
@@ -480,15 +426,7 @@ train:
   log_every_steps: 50
   gradient_accumulation_steps: 2
   mixed_precision: fp16
-  # 分類タスク固有
-  class_weight_mode: inverse_frequency  # none | inverse_frequency | manual
-  class_weights: null  # manual時に6要素のリスト
-  use_weighted_sampler: false  # WeightedRandomSampler使用
-
-eval:
-  go_macro_f1_min: 0.40
-  go_key_emotion_f1_min: 0.50
-  key_emotions: [anger, happy, sad]
+    # soft label学習固定のため class weight / sampler は設定しない
 ```
 
 ### 6.2 Config dataclass: Phase0ClassifierConfig
@@ -497,14 +435,12 @@ eval:
 @dataclass(slots=True)
 class ClassifierDataConfig(DataConfig):
     """分類タスク用のデータ設定（DataConfigを継承）"""
-    label_conversion: str = "argmax"        # "argmax" | "soft_label"
     soft_label_temperature: float = 1.0
 
 @dataclass(slots=True)
 class ClassifierModelConfig(ModelConfig):
     """分類タスク用のモデル設定"""
     num_classes: int = 6
-    transfer_from: str | None = None
 
 @dataclass(slots=True)
 class ClassifierTrainConfig:
@@ -523,25 +459,12 @@ class ClassifierTrainConfig:
     log_every_steps: int = 50
     gradient_accumulation_steps: int = 1
     mixed_precision: str = "no"
-    class_weight_mode: str = "inverse_frequency"
-    class_weights: list[float] | None = None
-    use_weighted_sampler: bool = False
-
-@dataclass(slots=True)
-class ClassifierEvalConfig:
-    """分類タスク用の評価設定"""
-    go_macro_f1_min: float = 0.40
-    go_key_emotion_f1_min: float = 0.50
-    key_emotions: list[str] = field(
-        default_factory=lambda: ["anger", "happy", "sad"]
-    )
 
 @dataclass(slots=True)
 class Phase0ClassifierConfig:
     data: ClassifierDataConfig = field(default_factory=ClassifierDataConfig)
     model: ClassifierModelConfig = field(default_factory=ClassifierModelConfig)
     train: ClassifierTrainConfig = field(default_factory=ClassifierTrainConfig)
-    eval: ClassifierEvalConfig = field(default_factory=ClassifierEvalConfig)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -558,10 +481,16 @@ def load_config(config_path):
     if "voicevox" in raw:
         return Phase1Config(...)
 
-    # 分類器設定の判別: num_classes キーまたは label_conversion キーの存在
+    # 分類器設定の判別: num_classes / soft_label_temperature / bert_lr / head_lr
     model_raw = raw.get("model", {})
     data_raw = raw.get("data", {})
-    if "num_classes" in model_raw or "label_conversion" in data_raw:
+    train_raw = raw.get("train", {})
+    if (
+        "num_classes" in model_raw
+        or "soft_label_temperature" in data_raw
+        or "bert_lr" in train_raw
+        or "head_lr" in train_raw
+    ):
         return Phase0ClassifierConfig(...)
 
     return Phase0Config(...)

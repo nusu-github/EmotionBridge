@@ -8,14 +8,12 @@ data:
   val_ratio: 0.1
   test_ratio: 0.1
   random_seed: 42
-  label_conversion: argmax
   soft_label_temperature: 1.0
 
 model:
   pretrained_model_name: sbintuitions/modernbert-ja-70m
   dropout: 0.1
   num_classes: 6
-  transfer_from: null
 
 train:
   output_dir: artifacts/classifier_smoke
@@ -32,11 +30,3 @@ train:
   log_every_steps: 10
   gradient_accumulation_steps: 1
   mixed_precision: "no"
-  class_weight_mode: inverse_frequency
-  class_weights: null
-  use_weighted_sampler: false
-
-eval:
-  go_macro_f1_min: 0.40
-  go_key_emotion_f1_min: 0.50
-  key_emotions: [anger, happy, sad]
