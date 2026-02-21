@@ -187,17 +187,18 @@ uv run python main.py bridge \
 
 主要オプション:
 
-| オプション             | 既定値                   | 説明                                                           |
-| ---------------------- | ------------------------ | -------------------------------------------------------------- |
-| `--character`          | `zundamon`               | スタイルマッピング内のキャラクターキー                         |
-| `--fallback-threshold` | `0.3`                    | 感情確信度がこの値未満の場合デフォルトスタイルにフォールバック |
-| `--enable-dsp`         | `False`                  | WORLDベースのDSP後処理を有効化                                  |
-| `--dsp-features-path`  | `artifacts/prosody/v01/jvnv_egemaps_normalized.parquet` | EmotionDSPMapper 初期化用の特徴量parquet |
-| `--dsp-f0-extractor`   | `dio`                    | DSP段のWORLD解析で使うF0抽出法（`dio` または `harvest`）          |
-| `--device`             | `cuda`                   | 推論デバイス（`cuda` または `cpu`）                            |
-| `--voicevox-url`       | `http://127.0.0.1:50021` | VOICEVOX Engine URL（`http://` / `https://`）                  |
+| オプション             | 既定値                                                  | 説明                                                           |
+| ---------------------- | ------------------------------------------------------- | -------------------------------------------------------------- |
+| `--character`          | `zundamon`                                              | スタイルマッピング内のキャラクターキー                         |
+| `--fallback-threshold` | `0.3`                                                   | 感情確信度がこの値未満の場合デフォルトスタイルにフォールバック |
+| `--enable-dsp`         | `False`                                                 | WORLDベースのDSP後処理を有効化                                 |
+| `--dsp-features-path`  | `artifacts/prosody/v01/jvnv_egemaps_normalized.parquet` | EmotionDSPMapper 初期化用の特徴量parquet                       |
+| `--dsp-f0-extractor`   | `dio`                                                   | DSP段のWORLD解析で使うF0抽出法（`dio` または `harvest`）       |
+| `--device`             | `cuda`                                                  | 推論デバイス（`cuda` または `cpu`）                            |
+| `--voicevox-url`       | `http://127.0.0.1:50021`                                | VOICEVOX Engine URL（`http://` / `https://`）                  |
 
 `bridge` のJSON出力には以下のDSP関連項目が追加される:
+
 - `dsp_params`: 適用したDSP制御量（未適用時は `null`）
 - `dsp_applied`: DSPが適用されたかどうか
 - `dsp_seed`: 決定論シード（未適用時は `null`）
@@ -231,11 +232,13 @@ uv run python -m emotionbridge.scripts.evaluate_roundtrip \
 ```
 
 出力ファイル:
+
 - `roundtrip_metrics.json`: 全指標・Go/No-Go判定・ファイル別詳細
 - `roundtrip_report.md`: 人間可読サマリ
 - `per_file_metrics.csv`: ファイル単位メトリクス
 
 Go/No-Go閾値:
+
 - `PESQ mean >= 3.5`
 - `MCD mean <= 6.0 dB`
 - `F0 RMSE mean <= 5.0 Hz`
