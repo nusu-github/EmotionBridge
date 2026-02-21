@@ -36,12 +36,17 @@ class _FakeGenerator(torch.nn.Module):
 
 
 class _FakeStyleSelector:
+    def __init__(self) -> None:
+        self.last_control_params: dict[str, float] | None = None
+
     def select(
         self,
         emotion_probs: dict[str, float],
         character: str,
+        control_params: dict[str, float] | None = None,
     ) -> tuple[int, str]:
         del emotion_probs, character
+        self.last_control_params = control_params
         return 7, "ツンツン"
 
     def default_style(self, character: str) -> tuple[int, str]:
@@ -101,11 +106,12 @@ class TestBridgePipelineDSP(unittest.IsolatedAsyncioTestCase):
     async def test_dsp_applied_when_enabled_and_not_fallback(self) -> None:
         probs = np.array([0.9, 0.02, 0.02, 0.02, 0.02, 0.02], dtype=np.float32)
         dsp_processor = _FakeDSPProcessor()
+        style_selector = _FakeStyleSelector()
         pipeline = EmotionBridgePipeline(
             classifier=cast("Any", _FakeClassifier(probs)),
             generator=_FakeGenerator(),
             generator_device=torch.device("cpu"),
-            style_selector=cast("Any", _FakeStyleSelector()),
+            style_selector=cast("Any", style_selector),
             voicevox_client=cast("Any", _FakeVoicevoxClient()),
             adapter=cast("Any", _FakeAdapter()),
             character="zundamon",
@@ -121,15 +127,24 @@ class TestBridgePipelineDSP(unittest.IsolatedAsyncioTestCase):
         assert result.dsp_params is not None
         assert isinstance(result.dsp_seed, int)
         assert result.audio_bytes == b"processed-audio"
+        assert style_selector.last_control_params is not None
+        assert set(style_selector.last_control_params.keys()) == {
+            "pitch_shift",
+            "pitch_range",
+            "speed",
+            "energy",
+            "pause_weight",
+        }
 
     async def test_dsp_skipped_on_fallback(self) -> None:
         probs = np.array([0.2, 0.18, 0.17, 0.16, 0.15, 0.14], dtype=np.float32)
         dsp_processor = _FakeDSPProcessor()
+        style_selector = _FakeStyleSelector()
         pipeline = EmotionBridgePipeline(
             classifier=cast("Any", _FakeClassifier(probs)),
             generator=_FakeGenerator(),
             generator_device=torch.device("cpu"),
-            style_selector=cast("Any", _FakeStyleSelector()),
+            style_selector=cast("Any", style_selector),
             voicevox_client=cast("Any", _FakeVoicevoxClient()),
             adapter=cast("Any", _FakeAdapter()),
             character="zundamon",
@@ -145,6 +160,7 @@ class TestBridgePipelineDSP(unittest.IsolatedAsyncioTestCase):
         assert result.dsp_params is None
         assert result.dsp_seed is None
         assert result.is_fallback
+        assert style_selector.last_control_params is None
 
     async def test_dsp_failure_is_raised(self) -> None:
         probs = np.array([0.9, 0.02, 0.02, 0.02, 0.02, 0.02], dtype=np.float32)

@@ -7,8 +7,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import Ridge
 
-from emotionbridge.constants import JVNV_EMOTION_LABELS
+from emotionbridge.constants import CONTROL_PARAM_NAMES, JVNV_EMOTION_LABELS
 from emotionbridge.scripts.common import (
     ensure_columns,
     load_experiment_config,
@@ -20,6 +21,9 @@ from emotionbridge.scripts.common import (
 )
 
 logger = logging.getLogger(__name__)
+
+CONTROL_COLUMNS = [f"ctrl_{name}" for name in CONTROL_PARAM_NAMES]
+EMOTION_PROB_COLUMNS = [f"emotion_{label}" for label in JVNV_EMOTION_LABELS]
 
 
 VOICEVOX_STYLE_METADATA: dict[int, dict[str, str]] = {
@@ -193,6 +197,236 @@ def _max_pairwise_centroid_distance(style_centroids: dict[int, np.ndarray]) -> f
             )
             max_distance = max(max_distance, distance)
     return max_distance
+
+
+def _normalize_prob_rows(matrix: np.ndarray) -> np.ndarray:
+    clipped = np.clip(matrix, a_min=0.0, a_max=None)
+    sums = clipped.sum(axis=1, keepdims=True)
+    normalized = np.divide(
+        clipped,
+        sums,
+        out=np.zeros_like(clipped),
+        where=sums > 0.0,
+    )
+    zero_rows = (sums[:, 0] <= 0.0).astype(bool)
+    if np.any(zero_rows):
+        normalized[zero_rows] = 1.0 / float(clipped.shape[1])
+    return normalized
+
+
+def _rowwise_zscore(matrix: np.ndarray) -> np.ndarray:
+    means = matrix.mean(axis=1, keepdims=True)
+    stds = matrix.std(axis=1, ddof=0, keepdims=True)
+    return np.divide(
+        matrix - means,
+        stds,
+        out=np.zeros_like(matrix),
+        where=stds > 1.0e-12,
+    )
+
+
+def _build_style_control_compatibility(
+    *,
+    raw_path: str | Path,
+    target_style_ids: list[int],
+    feature_cols: list[str],
+    jvnv_centroids: dict[str, np.ndarray],
+    distance_nested: dict[str, dict[str, float]],
+    random_seed: int,
+) -> dict[str, Any]:
+    raw_df = read_parquet(resolve_path(raw_path)).copy()
+    required = ["style_id", *CONTROL_COLUMNS, *EMOTION_PROB_COLUMNS, *feature_cols]
+    ensure_columns(raw_df, required, where="voicevox raw (style compatibility)")
+    raw_df = raw_df[raw_df["style_id"].isin(target_style_ids)].reset_index(drop=True)
+    if raw_df.empty:
+        msg = f"No rows remain after style_id filter in compatibility build: {target_style_ids}"
+        raise RuntimeError(msg)
+
+    feature_mat = raw_df[feature_cols].to_numpy(dtype=np.float64)
+    means = feature_mat.mean(axis=0)
+    stds = feature_mat.std(axis=0, ddof=0)
+    if np.any(stds <= 0.0):
+        zero_cols = [feature_cols[i] for i, value in enumerate(stds) if value <= 0.0]
+        msg = f"Feature std must be positive for compatibility model: {zero_cols}"
+        raise RuntimeError(msg)
+    z_feature_mat = (feature_mat - means) / stds
+
+    control_mat = raw_df[CONTROL_COLUMNS].to_numpy(dtype=np.float64)
+    emotion_probs = _normalize_prob_rows(
+        raw_df[EMOTION_PROB_COLUMNS].to_numpy(dtype=np.float64),
+    )
+    style_labels = raw_df["style_id"].to_numpy(dtype=np.int64)
+    candidate_style_ids = sorted(
+        int(style_id) for style_id in np.unique(style_labels).tolist() if int(style_id) in target_style_ids
+    )
+    if len(candidate_style_ids) < 2:
+        msg = "style compatibility build requires at least two styles"
+        raise RuntimeError(msg)
+
+    centroid_matrix_rows: list[np.ndarray] = []
+    for emotion in JVNV_EMOTION_LABELS:
+        centroid = jvnv_centroids.get(emotion)
+        if centroid is None:
+            msg = f"Missing JVNV centroid for emotion: {emotion}"
+            raise RuntimeError(msg)
+        centroid_matrix_rows.append(np.asarray(centroid, dtype=np.float64))
+    centroid_matrix = np.vstack(centroid_matrix_rows)
+    if centroid_matrix.shape[1] != len(feature_cols):
+        msg = "JVNV centroid dimension mismatch in compatibility build"
+        raise RuntimeError(msg)
+
+    distance_matrix = np.zeros((len(JVNV_EMOTION_LABELS), len(candidate_style_ids)), dtype=np.float64)
+    for e_idx, emotion in enumerate(JVNV_EMOTION_LABELS):
+        row = distance_nested.get(emotion)
+        if not isinstance(row, dict):
+            msg = f"Distance matrix row is missing for emotion: {emotion}"
+            raise RuntimeError(msg)
+        for s_idx, style_id in enumerate(candidate_style_ids):
+            value = row.get(str(style_id))
+            if not isinstance(value, (int, float)):
+                msg = f"Distance matrix is missing value for emotion={emotion}, style_id={style_id}"
+                raise RuntimeError(msg)
+            distance_matrix[e_idx, s_idx] = float(value)
+
+    rng = np.random.default_rng(random_seed)
+    valid_mask = np.zeros(len(raw_df), dtype=bool)
+    style_models_payload: dict[str, dict[str, Any]] = {}
+    trained_models: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    style_split_rows: list[dict[str, Any]] = []
+    for style_id in candidate_style_ids:
+        idx = np.flatnonzero(style_labels == style_id)
+        if idx.size < 2:
+            msg = f"style_id={style_id} has too few samples for hold-out split: {idx.size}"
+            raise RuntimeError(msg)
+        shuffled = rng.permutation(idx)
+        valid_size = max(1, int(np.floor(float(idx.size) * 0.2)))
+        valid_size = min(valid_size, idx.size - 1)
+        valid_idx = shuffled[:valid_size]
+        train_idx = shuffled[valid_size:]
+        valid_mask[valid_idx] = True
+
+        x_train = control_mat[train_idx]
+        y_train = z_feature_mat[train_idx]
+        x_valid = control_mat[valid_idx]
+        y_valid = z_feature_mat[valid_idx]
+
+        model = Ridge(alpha=1.0, fit_intercept=True)
+        model.fit(x_train, y_train)
+
+        pred_train = model.predict(x_train)
+        pred_valid = model.predict(x_valid)
+
+        train_rmse = float(np.sqrt(np.mean(np.square(y_train - pred_train))))
+        valid_rmse = float(np.sqrt(np.mean(np.square(y_valid - pred_valid))))
+
+        coef = np.asarray(model.coef_, dtype=np.float64)
+        intercept = np.asarray(model.intercept_, dtype=np.float64).reshape(-1)
+        trained_models[style_id] = (coef, intercept)
+        style_models_payload[str(style_id)] = {
+            "style_id": int(style_id),
+            "character": _style_meta(style_id)["character"],
+            "style_name": _style_meta(style_id)["style_name"],
+            "num_samples": int(idx.size),
+            "num_train": int(train_idx.size),
+            "num_valid": int(valid_idx.size),
+            "ridge_alpha": 1.0,
+            "train_rmse": train_rmse,
+            "valid_rmse": valid_rmse,
+            "coef": coef.tolist(),
+            "intercept": intercept.tolist(),
+        }
+        style_split_rows.append(
+            {
+                "style_id": int(style_id),
+                "num_samples": int(idx.size),
+                "num_train": int(train_idx.size),
+                "num_valid": int(valid_idx.size),
+                "train_rmse": train_rmse,
+                "valid_rmse": valid_rmse,
+            },
+        )
+
+    valid_indices = np.flatnonzero(valid_mask)
+    if valid_indices.size == 0:
+        msg = "No validation rows available for lambda optimization"
+        raise RuntimeError(msg)
+
+    x_valid_all = control_mat[valid_indices]
+    probs_valid_all = emotion_probs[valid_indices]
+    target_features = probs_valid_all @ centroid_matrix
+    base_scores_raw = -(probs_valid_all @ distance_matrix)
+
+    compat_scores_raw = np.zeros_like(base_scores_raw)
+    for s_idx, style_id in enumerate(candidate_style_ids):
+        coef, intercept = trained_models[style_id]
+        pred_features = x_valid_all @ coef.T + intercept
+        compat_scores_raw[:, s_idx] = -np.linalg.norm(target_features - pred_features, axis=1)
+
+    base_scores = _rowwise_zscore(base_scores_raw)
+    compat_scores = _rowwise_zscore(compat_scores_raw)
+
+    expected_distance_by_style = probs_valid_all @ distance_matrix
+    lambda_grid = [round(value, 2) for value in np.arange(0.0, 1.0001, 0.05).tolist()]
+    objective_rows: list[dict[str, Any]] = []
+    best_lambda = 0.0
+    best_objective = float("inf")
+    best_selected_style_ids: np.ndarray | None = None
+    for lam in lambda_grid:
+        final_scores = base_scores + (float(lam) * compat_scores)
+        selected_idx = np.argmax(final_scores, axis=1)
+        row_objective = expected_distance_by_style[np.arange(len(selected_idx)), selected_idx]
+        objective = float(np.mean(row_objective))
+        objective_rows.append(
+            {
+                "lambda": float(lam),
+                "mean_expected_distance": objective,
+            },
+        )
+        if (objective < best_objective - 1.0e-12) or (
+            abs(objective - best_objective) <= 1.0e-12 and float(lam) < best_lambda
+        ):
+            best_lambda = float(lam)
+            best_objective = objective
+            best_selected_style_ids = np.array(
+                [candidate_style_ids[idx] for idx in selected_idx],
+                dtype=np.int64,
+            )
+
+    if best_selected_style_ids is None:
+        msg = "Failed to optimize lambda for style compatibility"
+        raise RuntimeError(msg)
+
+    selection_counts: dict[str, int] = {str(style_id): 0 for style_id in candidate_style_ids}
+    unique_selected, unique_counts = np.unique(best_selected_style_ids, return_counts=True)
+    for style_id, count in zip(unique_selected.tolist(), unique_counts.tolist(), strict=True):
+        selection_counts[str(int(style_id))] = int(count)
+
+    return {
+        "version": "1.0",
+        "created_at": datetime.now(tz=UTC).isoformat(),
+        "feature_names": feature_cols,
+        "control_names": CONTROL_PARAM_NAMES,
+        "style_ids": candidate_style_ids,
+        "holdout_ratio": 0.2,
+        "random_seed": int(random_seed),
+        "selection_metric": {
+            "objective": "mean_expected_distance",
+            "lambda_grid": lambda_grid,
+            "best_lambda": best_lambda,
+            "best_objective": best_objective,
+            "selection_counts": selection_counts,
+        },
+        "objective_by_lambda": objective_rows,
+        "style_models": style_models_payload,
+        "style_split_summary": style_split_rows,
+        "jvnv_emotion_centroids": {
+            emotion: {
+                feature: float(value)
+                for feature, value in zip(feature_cols, jvnv_centroids[emotion], strict=True)
+            }
+            for emotion in JVNV_EMOTION_LABELS
+        },
+    }
 
 
 def _build_raw_global_profiles(
@@ -463,13 +697,51 @@ def run_build_style_mapping(
     distance_json = v03_dir / "emotion_style_distance_matrix.json"
     save_json(distance_json_payload, distance_json)
 
+    selection_policy = "prob_distance_only"
+    scoring_payload: dict[str, Any] = {
+        "base_term": "sum_p_emotion_negative_distance",
+        "compat_term": "disabled",
+        "normalization": "zscore_across_styles",
+        "lambda": 0.0,
+        "lambda_source": "disabled",
+    }
+    style_control_compatibility_json: Path | None = None
+    if style_signal_status == "retain_style":
+        if profile_source != "voicevox_egemaps_raw(global_zscore_style_signal)":
+            msg = (
+                "style_signal_status=retain_style requires raw global-z style profiles, "
+                f"but profile_source is '{profile_source}'"
+            )
+            raise RuntimeError(msg)
+        compatibility_payload = _build_style_control_compatibility(
+            raw_path=raw_path,
+            target_style_ids=target_style_ids,
+            feature_cols=feature_cols,
+            jvnv_centroids=jvnv_centroids,
+            distance_nested=distance_nested,
+            random_seed=int(config.v03.random_seed),
+        )
+        style_control_compatibility_json = v03_dir / "style_control_compatibility.json"
+        save_json(compatibility_payload, style_control_compatibility_json)
+        best_lambda = float(compatibility_payload["selection_metric"]["best_lambda"])
+        selection_policy = "prob_distance_with_control_compat"
+        scoring_payload = {
+            "base_term": "sum_p_emotion_negative_distance",
+            "compat_term": "negative_l2_to_style_control_prediction",
+            "normalization": "zscore_across_styles",
+            "lambda": best_lambda,
+            "lambda_source": "style_control_compatibility",
+        }
+
     selected_character = _character_from_styles(target_style_ids)
     default_style_id = _default_style_id(selected_character, target_style_ids)
 
     mapping_payload = {
-        "version": "1.0",
+        "version": "2.0",
         "created_at": datetime.now(tz=UTC).isoformat(),
         "selected_character": selected_character,
+        "selection_policy": selection_policy,
+        "scoring": scoring_payload,
         "styles_used": target_style_ids,
         "style_signal_status": style_signal_status,
         "style_signal_metrics_path": style_signal_metrics_path,
@@ -489,6 +761,9 @@ def run_build_style_mapping(
             "distance_matrix": str(distance_json),
             "distance_matrix_table": str(distance_parquet),
             "style_signal_metrics": style_signal_metrics_path,
+            "style_control_compatibility": (
+                str(style_control_compatibility_json) if style_control_compatibility_json else None
+            ),
         },
     }
 
@@ -510,6 +785,9 @@ def run_build_style_mapping(
         f"- Profile source reason: {profile_source_reason}",
         f"- Style signal status: {style_signal_status}",
         f"- Style signal metrics: {style_signal_metrics_path}",
+        f"- Selection policy: {selection_policy}",
+        f"- Scoring lambda: {float(scoring_payload['lambda']):.2f}",
+        f"- Style-control compatibility: {style_control_compatibility_json}",
         "",
         "## Best Style by Emotion",
     ]
@@ -537,6 +815,9 @@ def run_build_style_mapping(
         "distance_table": str(distance_parquet),
         "emotion_style_mapping": str(mapping_in_v03),
         "style_mapping": str(style_mapping),
+        "style_control_compatibility": (
+            str(style_control_compatibility_json) if style_control_compatibility_json else ""
+        ),
         "report": str(report_path),
     }
 

@@ -48,29 +48,330 @@ class RuleBasedStyleSelector:
         with path.open("r", encoding="utf-8") as file:
             payload = json.load(file)
 
+        if str(payload.get("version")) != "2.0":
+            msg = (
+                "Unsupported style mapping schema version. "
+                "Run build_style_mapping.py to regenerate style_mapping.json (v2.0)."
+            )
+            raise ValueError(msg)
+
+        selection_policy = payload.get("selection_policy")
+        if selection_policy not in {"prob_distance_only", "prob_distance_with_control_compat"}:
+            msg = (
+                "Invalid style mapping: 'selection_policy' must be "
+                "'prob_distance_only' or 'prob_distance_with_control_compat'"
+            )
+            raise ValueError(msg)
+
+        scoring = payload.get("scoring")
+        if not isinstance(scoring, dict):
+            msg = "Invalid style mapping: 'scoring' must be dict"
+            raise ValueError(msg)
+
         characters = payload.get("characters")
         if not isinstance(characters, dict):
             msg = "Invalid style mapping: 'characters' must be dict"
             raise ValueError(msg)
 
+        styles_used_raw = payload.get("styles_used")
+        if not isinstance(styles_used_raw, list) or not styles_used_raw:
+            msg = "Invalid style mapping: 'styles_used' must be non-empty list"
+            raise ValueError(msg)
+        style_ids = sorted({int(style_id) for style_id in styles_used_raw})
+        style_index_by_id = {style_id: idx for idx, style_id in enumerate(style_ids)}
+
+        artifacts = payload.get("artifacts")
+        if not isinstance(artifacts, dict):
+            msg = "Invalid style mapping: 'artifacts' must be dict"
+            raise ValueError(msg)
+        if "style_control_compatibility" not in artifacts:
+            msg = "Invalid style mapping: 'artifacts.style_control_compatibility' is required"
+            raise ValueError(msg)
+
+        self._mapping_dir = path.resolve().parent
         self._characters = characters
+        self._selection_policy = str(selection_policy)
+        self._compat_lambda = float(scoring.get("lambda", 0.0))
+        self._style_ids = style_ids
+        self._style_index_by_id = style_index_by_id
+
+        distance_payload = self._load_json_artifact(artifacts.get("distance_matrix"), "distance_matrix")
+        distance_nested = distance_payload.get("distance_matrix")
+        if not isinstance(distance_nested, dict):
+            msg = "Invalid distance matrix artifact: 'distance_matrix' must be dict"
+            raise ValueError(msg)
+
+        distance_rows: list[np.ndarray] = []
+        for emotion in JVNV_EMOTION_LABELS:
+            row = distance_nested.get(emotion)
+            if not isinstance(row, dict):
+                msg = f"Invalid distance matrix artifact: missing row for emotion '{emotion}'"
+                raise ValueError(msg)
+            values: list[float] = []
+            for style_id in self._style_ids:
+                value = row.get(str(style_id))
+                if not isinstance(value, (int, float)):
+                    msg = (
+                        "Invalid distance matrix artifact: "
+                        f"missing distance for emotion={emotion}, style_id={style_id}"
+                    )
+                    raise ValueError(msg)
+                values.append(float(value))
+            distance_rows.append(np.array(values, dtype=np.float64))
+        self._distance_matrix = np.vstack(distance_rows)
+
+        self._style_name_by_id: dict[int, str] = {
+            style_id: f"style_{style_id}" for style_id in self._style_ids
+        }
+        self._style_character_by_id: dict[int, str] = {}
+        style_profiles_raw = artifacts.get("style_profiles")
+        if isinstance(style_profiles_raw, str) and style_profiles_raw:
+            style_profiles_payload = self._load_json_artifact(style_profiles_raw, "style_profiles")
+            styles_payload = style_profiles_payload.get("styles")
+            if isinstance(styles_payload, dict):
+                for style_id in self._style_ids:
+                    item = styles_payload.get(str(style_id))
+                    if not isinstance(item, dict):
+                        continue
+                    style_name = item.get("style_name")
+                    character = item.get("character")
+                    if isinstance(style_name, str) and style_name:
+                        self._style_name_by_id[style_id] = style_name
+                    if isinstance(character, str) and character:
+                        self._style_character_by_id[style_id] = character
+
+        for character, character_payload in self._characters.items():
+            if not isinstance(character_payload, dict):
+                continue
+            mapping = character_payload.get("mapping")
+            if isinstance(mapping, dict):
+                for item in mapping.values():
+                    if not isinstance(item, dict):
+                        continue
+                    style_id = item.get("style_id")
+                    style_name = item.get("style_name")
+                    if isinstance(style_id, int) and isinstance(style_name, str) and style_name:
+                        self._style_name_by_id[style_id] = style_name
+                        self._style_character_by_id.setdefault(style_id, str(character))
+            default_style = character_payload.get("default_style")
+            if isinstance(default_style, dict):
+                style_id = default_style.get("style_id")
+                style_name = default_style.get("style_name")
+                if isinstance(style_id, int) and isinstance(style_name, str) and style_name:
+                    self._style_name_by_id[style_id] = style_name
+                    self._style_character_by_id.setdefault(style_id, str(character))
+
+        self._character_style_ids: dict[str, list[int]] = {}
+        for character in self._characters:
+            character_style_ids = [
+                style_id
+                for style_id in self._style_ids
+                if self._style_character_by_id.get(style_id, character) == character
+            ]
+            self._character_style_ids[character] = (
+                character_style_ids if character_style_ids else list(self._style_ids)
+            )
+
+        self._compat_feature_names: list[str] = []
+        self._compat_models: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        self._jvnv_centroid_matrix: np.ndarray | None = None
+        if self._selection_policy == "prob_distance_with_control_compat":
+            compatibility_raw = artifacts.get("style_control_compatibility")
+            if not isinstance(compatibility_raw, str) or not compatibility_raw:
+                msg = (
+                    "selection_policy=prob_distance_with_control_compat requires "
+                    "'artifacts.style_control_compatibility'"
+                )
+                raise ValueError(msg)
+            compatibility_payload = self._load_json_artifact(
+                compatibility_raw,
+                "style_control_compatibility",
+            )
+            self._load_compatibility_payload(compatibility_payload)
+
+    def _load_json_artifact(self, artifact_path: object, label: str) -> dict[str, Any]:
+        if not isinstance(artifact_path, str) or not artifact_path:
+            msg = f"Invalid style mapping: artifact path '{label}' is missing"
+            raise ValueError(msg)
+        path = Path(artifact_path)
+        if not path.is_absolute():
+            path = (self._mapping_dir / path).resolve()
+        if not path.exists():
+            msg = f"style mapping artifact not found: {label} -> {path}"
+            raise FileNotFoundError(msg)
+        with path.open("r", encoding="utf-8") as file:
+            payload = json.load(file)
+        if not isinstance(payload, dict):
+            msg = f"Invalid style mapping artifact: {label} must be JSON object"
+            raise ValueError(msg)
+        return payload
+
+    def _load_compatibility_payload(self, payload: dict[str, Any]) -> None:
+        style_ids_raw = payload.get("style_ids")
+        if not isinstance(style_ids_raw, list):
+            msg = "Invalid compatibility artifact: 'style_ids' must be list"
+            raise ValueError(msg)
+        compat_style_ids = sorted({int(style_id) for style_id in style_ids_raw})
+        if compat_style_ids != self._style_ids:
+            msg = "Invalid compatibility artifact: style_ids mismatch with style_mapping.json"
+            raise ValueError(msg)
+
+        feature_names = payload.get("feature_names")
+        if not isinstance(feature_names, list) or not feature_names:
+            msg = "Invalid compatibility artifact: 'feature_names' must be non-empty list"
+            raise ValueError(msg)
+        if not all(isinstance(name, str) and name for name in feature_names):
+            msg = "Invalid compatibility artifact: feature_names must be non-empty strings"
+            raise ValueError(msg)
+        self._compat_feature_names = [str(name) for name in feature_names]
+
+        control_names = payload.get("control_names")
+        if not isinstance(control_names, list):
+            msg = "Invalid compatibility artifact: 'control_names' must be list"
+            raise ValueError(msg)
+        if [str(name) for name in control_names] != CONTROL_PARAM_NAMES:
+            msg = (
+                "Invalid compatibility artifact: control_names must match CONTROL_PARAM_NAMES "
+                f"({CONTROL_PARAM_NAMES})"
+            )
+            raise ValueError(msg)
+
+        centroids = payload.get("jvnv_emotion_centroids")
+        if not isinstance(centroids, dict):
+            msg = "Invalid compatibility artifact: 'jvnv_emotion_centroids' must be dict"
+            raise ValueError(msg)
+        centroid_rows: list[np.ndarray] = []
+        for emotion in JVNV_EMOTION_LABELS:
+            row = centroids.get(emotion)
+            if not isinstance(row, dict):
+                msg = f"Invalid compatibility artifact: centroid row missing for emotion '{emotion}'"
+                raise ValueError(msg)
+            values: list[float] = []
+            for feature in self._compat_feature_names:
+                value = row.get(feature)
+                if not isinstance(value, (int, float)):
+                    msg = (
+                        "Invalid compatibility artifact: missing centroid value for "
+                        f"emotion={emotion}, feature={feature}"
+                    )
+                    raise ValueError(msg)
+                values.append(float(value))
+            centroid_rows.append(np.array(values, dtype=np.float64))
+        self._jvnv_centroid_matrix = np.vstack(centroid_rows)
+
+        style_models = payload.get("style_models")
+        if not isinstance(style_models, dict):
+            msg = "Invalid compatibility artifact: 'style_models' must be dict"
+            raise ValueError(msg)
+        self._compat_models = {}
+        for style_id in self._style_ids:
+            model_payload = style_models.get(str(style_id))
+            if not isinstance(model_payload, dict):
+                msg = f"Invalid compatibility artifact: missing model for style_id={style_id}"
+                raise ValueError(msg)
+            coef = np.asarray(model_payload.get("coef"), dtype=np.float64)
+            intercept = np.asarray(model_payload.get("intercept"), dtype=np.float64).reshape(-1)
+            expected_coef_shape = (len(self._compat_feature_names), len(CONTROL_PARAM_NAMES))
+            if coef.shape != expected_coef_shape:
+                msg = (
+                    "Invalid compatibility artifact: coef shape mismatch for style_id="
+                    f"{style_id}. expected={expected_coef_shape}, got={coef.shape}"
+                )
+                raise ValueError(msg)
+            if intercept.shape != (len(self._compat_feature_names),):
+                msg = (
+                    "Invalid compatibility artifact: intercept shape mismatch for style_id="
+                    f"{style_id}. expected={(len(self._compat_feature_names),)}, got={intercept.shape}"
+                )
+                raise ValueError(msg)
+            self._compat_models[style_id] = (coef, intercept)
+
+        metric = payload.get("selection_metric")
+        if not isinstance(metric, dict):
+            msg = "Invalid compatibility artifact: 'selection_metric' must be dict"
+            raise ValueError(msg)
+        best_lambda = metric.get("best_lambda")
+        if not isinstance(best_lambda, (int, float)):
+            msg = "Invalid compatibility artifact: 'selection_metric.best_lambda' must be numeric"
+            raise ValueError(msg)
+        self._compat_lambda = float(best_lambda)
+
+    @staticmethod
+    def _normalize_emotion_probs(emotion_probs: dict[str, float]) -> np.ndarray:
+        values = np.array(
+            [max(0.0, float(emotion_probs.get(emotion, 0.0))) for emotion in JVNV_EMOTION_LABELS],
+            dtype=np.float64,
+        )
+        total = float(np.sum(values))
+        if total <= 0.0:
+            return np.full(len(JVNV_EMOTION_LABELS), 1.0 / float(len(JVNV_EMOTION_LABELS)))
+        return values / total
+
+    @staticmethod
+    def _zscore(values: np.ndarray) -> np.ndarray:
+        mean = float(np.mean(values))
+        std = float(np.std(values, ddof=0))
+        if std <= 1.0e-12:
+            return np.zeros_like(values)
+        return (values - mean) / std
 
     def select(
         self,
         emotion_probs: dict[str, float],
         character: str,
+        control_params: dict[str, float] | None = None,
     ) -> tuple[int, str]:
         if character not in self._characters:
             msg = f"character '{character}' is not found in style mapping"
             raise KeyError(msg)
 
-        dominant = max(emotion_probs, key=lambda key: emotion_probs[key])
-        mapping = self._characters[character].get("mapping", {})
-        selected = mapping.get(dominant)
-        if selected is None:
-            return self.default_style(character)
+        candidate_style_ids = self._character_style_ids.get(character, self._style_ids)
+        candidate_indices = np.array(
+            [self._style_index_by_id[style_id] for style_id in candidate_style_ids],
+            dtype=np.int64,
+        )
 
-        return int(selected["style_id"]), str(selected["style_name"])
+        probs = self._normalize_emotion_probs(emotion_probs)
+        base_raw_all = -(probs @ self._distance_matrix)
+        base_raw = base_raw_all[candidate_indices]
+        final_scores = self._zscore(base_raw)
+
+        if self._selection_policy == "prob_distance_with_control_compat":
+            if self._jvnv_centroid_matrix is None:
+                msg = "compatibility centroid matrix is not initialized"
+                raise RuntimeError(msg)
+            if control_params is None:
+                msg = (
+                    "control_params is required for "
+                    "selection_policy=prob_distance_with_control_compat"
+                )
+                raise ValueError(msg)
+
+            try:
+                control_vec = np.array(
+                    [float(control_params[name]) for name in CONTROL_PARAM_NAMES],
+                    dtype=np.float64,
+                )
+            except KeyError as exc:
+                msg = f"control_params is missing required key: {exc.args[0]}"
+                raise ValueError(msg) from exc
+
+            target_feature = probs @ self._jvnv_centroid_matrix
+            compat_raw = np.zeros(len(candidate_style_ids), dtype=np.float64)
+            for idx, style_id in enumerate(candidate_style_ids):
+                model = self._compat_models.get(style_id)
+                if model is None:
+                    msg = f"compatibility model is missing for style_id={style_id}"
+                    raise RuntimeError(msg)
+                coef, intercept = model
+                pred_feature = coef @ control_vec + intercept
+                compat_raw[idx] = -float(np.linalg.norm(target_feature - pred_feature))
+            final_scores = final_scores + (self._compat_lambda * self._zscore(compat_raw))
+
+        selected_idx = int(np.argmax(final_scores))
+        style_id = int(candidate_style_ids[selected_idx])
+        style_name = self._style_name_by_id.get(style_id, f"style_{style_id}")
+        return style_id, style_name
 
     def default_style(self, character: str) -> tuple[int, str]:
         if character not in self._characters:
@@ -188,11 +489,20 @@ class EmotionBridgePipeline:
             style_id, style_name = self._style_selector.default_style(self._character)
             control = ControlVector()
         else:
+            control = self._predict_control(probs_common6)
+            control_dict = {
+                name: float(value)
+                for name, value in zip(
+                    CONTROL_PARAM_NAMES,
+                    control.to_numpy(),
+                    strict=True,
+                )
+            }
             style_id, style_name = self._style_selector.select(
                 emotion_probs,
                 self._character,
+                control_dict,
             )
-            control = self._predict_control(probs_common6)
 
         query = await self._voicevox.audio_query(text=text, speaker_id=style_id)
         modified = self._adapter.apply(query, control)

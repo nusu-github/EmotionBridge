@@ -417,6 +417,7 @@ async def run_prepare(
                 mapped_style_id, mapped_style_name = style_selector.select(
                     target_probs,
                     character,
+                    bridge_result.control_params,
                 )
 
                 default_style_controlled = await _synthesize_with_control(

@@ -66,16 +66,28 @@ def _write_inputs(base: Path) -> tuple[Path, Path, Path, Path]:
 
     raw_rows = []
     for style in [1, 3]:
-        raw_rows.extend(
-            [
+        for idx in range(8):
+            anger_prob = 0.7 if idx % 2 == 0 else 0.1
+            happy_prob = 0.2 if idx % 2 == 0 else 0.8
+            remain = 1.0 - anger_prob - happy_prob
+            raw_rows.append(
                 {
                     "style_id": style,
+                    "ctrl_pitch_shift": -0.8 + 0.2 * idx,
+                    "ctrl_pitch_range": -0.4 + 0.1 * idx,
+                    "ctrl_speed": -0.2 + 0.1 * idx,
+                    "ctrl_energy": -0.3 + 0.15 * idx,
+                    "ctrl_pause_weight": 0.1 * (idx - 4),
+                    "emotion_anger": anger_prob,
+                    "emotion_disgust": remain / 4.0,
+                    "emotion_fear": remain / 4.0,
+                    "emotion_happy": happy_prob,
+                    "emotion_sad": remain / 4.0,
+                    "emotion_surprise": remain / 4.0,
                     "egemaps__feat0": 1.0 if style == 1 else -1.0,
                     "egemaps__feat1": 0.2 if style == 1 else -0.2,
-                }
-                for _ in range(8)
-            ],
-        )
+                },
+            )
     pd.DataFrame(raw_rows).to_parquet(v02_dir / "voicevox_egemaps_raw.parquet", index=False)
     return v01_dir, v02_dir, v03_dir, out_root
 
@@ -108,7 +120,14 @@ def test_build_style_mapping_uses_style_signal_retain(tmp_path: Path) -> None:
     assert "global_zscore_style_signal" in payload["profile_source"]
     assert payload["style_signal_metrics_path"] == str(v03_dir / "style_influence_metrics.json")
     assert mapping["style_signal_status"] == "retain_style"
-    assert "profile_source_reason" in mapping
+    assert mapping["version"] == "2.0"
+    assert mapping["selection_policy"] == "prob_distance_with_control_compat"
+    assert isinstance(mapping["scoring"]["lambda"], float)
+    compat_path = mapping["artifacts"]["style_control_compatibility"]
+    assert isinstance(compat_path, str)
+    compat_payload = json.loads(Path(compat_path).read_text(encoding="utf-8"))
+    assert compat_payload["selection_metric"]["objective"] == "mean_expected_distance"
+    assert isinstance(compat_payload["selection_metric"]["best_lambda"], float)
 
 
 def test_build_style_mapping_sets_unavailable_when_metrics_missing(tmp_path: Path) -> None:
@@ -130,3 +149,6 @@ def test_build_style_mapping_sets_unavailable_when_metrics_missing(tmp_path: Pat
     assert payload["style_signal_metrics_path"] is None
     assert "metrics file not found" in payload["style_signal_info"]
     assert mapping["style_signal_status"] == "unavailable"
+    assert mapping["version"] == "2.0"
+    assert mapping["selection_policy"] == "prob_distance_only"
+    assert mapping["artifacts"]["style_control_compatibility"] is None

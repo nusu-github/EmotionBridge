@@ -230,6 +230,9 @@ JVNV（人間の感情音声）と VOICEVOX（TTS合成音声）は、生の eGe
 - `profile_source`: `voicevox_egemaps_raw(global_zscore_style_signal)`
 - `profile_source_reason`: `style_signal_status=retain_style`
 
+加えてオンライン推論のスタイル選択ロジックも更新し、`dominant_emotion -> 固定style` の1点参照ではなく、`emotion_probs` 全体と距離行列を使う連続スコアに切り替えた。さらに `style × control` 交互作用を取り込むため、style別回帰による互換項を加算する構成へ移行した。  
+したがって結論は「スタイルが影響していない」ではなく、**スタイル信号は強く存在し（retain_style）、それをオンライン選択に活用する運用へ改修済み**である。
+
 従って本プロジェクトの結論は、次の通りに更新される。
 
 1. **「スタイル差がない」ではなく、「style_id-zscore 空間では縮退するが、運用上のスタイル信号は十分に存在する」が正確**
@@ -293,7 +296,7 @@ f0_list[i] = (f0_list[i] - mean_f0) * intonation_scale + mean_f0;
 **pause_weight の複合性。** `AudioQuery` 構造体は文中ポーズを `AccentPhrase.pause_mora`（mora 単位）で、文頭末を `pre_phoneme_length`/`post_phoneme_length` で管理する。本プロジェクトの pause_weight がラウドネス stddev と最も強く相関した（0.772）のは、これらの複合的なポーズ操作が「音量がある区間とない区間の交替パターン」として eGeMAPSv02 に反映されたためであり、`AudioQuery` の構造と整合する。
 
 **スタイル間距離の微小差。** VOICEVOX コードにおいて `style_id` は `ids_for::<TalkDomain>(style_id)` のように使われており、**どのニューラルネットの重みセットを使うかを選択するキー**として機能する。`AudioQuery` にスタイル固有の音響パラメータが載るわけではなく、韻律制御パラメータ（F0・速度・エネルギー等）の解釈ロジックはスタイル間で共通である。加えて `style_id` ごとの Z スコア正規化空間ではスタイル重心が一致しやすい。したがって 10^-6 オーダーの距離差は「実装構造」と「前処理」の両方で説明できる。  
-一方で現行運用では、`style_signal_status=retain_style` の場合に raw global z-score 空間でマッピングを構築するため、縮退空間のみを根拠にスタイルを捨てない設計へ更新済みである。
+一方で現行運用では、`style_signal_status=retain_style` の場合に raw global z-score 空間でマッピングを構築し、オンライン選択でも距離行列 + 互換項で style をスコアリングするため、縮退空間のみを根拠にスタイルを捨てない設計へ更新済みである。
 
 ### コードとの齟齬に関する注記
 

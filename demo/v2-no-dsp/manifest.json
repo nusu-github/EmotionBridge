@@ -2,7 +2,7 @@
   {
     "target_emotion": "anger",
     "text": "ふざけるな、今すぐ謝れ！",
-    "audio_path": "demo/v2-dsp-harvest/anger.wav",
+    "audio_path": "demo/v2-no-dsp/anger.wav",
     "dominant_emotion": "anger",
     "confidence": 0.6058498024940491,
     "style_id": 3,
@@ -14,14 +14,9 @@
       "energy": 0.23851235210895538,
       "pause_weight": 0.08152174949645996
     },
-    "dsp_params": {
-      "jitter_amount": 0.18562433123588562,
-      "shimmer_amount": 0.15146245062351227,
-      "aperiodicity_shift": 0.13146431744098663,
-      "spectral_tilt_shift": -0.25896090269088745
-    },
-    "dsp_applied": true,
-    "dsp_seed": 2578296859,
+    "dsp_params": null,
+    "dsp_applied": false,
+    "dsp_seed": null,
     "emotion_probs": {
       "anger": 0.6058498024940491,
       "disgust": 0.3248268961906433,
@@ -35,7 +30,7 @@
   {
     "target_emotion": "disgust",
     "text": "本当に不快でたまらない。",
-    "audio_path": "demo/v2-dsp-harvest/disgust.wav",
+    "audio_path": "demo/v2-no-dsp/disgust.wav",
     "dominant_emotion": "disgust",
     "confidence": 0.69185870885849,
     "style_id": 3,
@@ -47,14 +42,9 @@
       "energy": -0.2554608881473541,
       "pause_weight": 0.015287837944924831
     },
-    "dsp_params": {
-      "jitter_amount": 0.017424819990992546,
-      "shimmer_amount": 0.00765274791046977,
-      "aperiodicity_shift": 0.023731332272291183,
-      "spectral_tilt_shift": -0.2416444718837738
-    },
-    "dsp_applied": true,
-    "dsp_seed": 976967724,
+    "dsp_params": null,
+    "dsp_applied": false,
+    "dsp_seed": null,
     "emotion_probs": {
       "anger": 0.03061099164187908,
       "disgust": 0.69185870885849,
@@ -68,7 +58,7 @@
   {
     "target_emotion": "fear",
     "text": "夜道で足音がして怖くて動けない。",
-    "audio_path": "demo/v2-dsp-harvest/fear.wav",
+    "audio_path": "demo/v2-no-dsp/fear.wav",
     "dominant_emotion": "fear",
     "confidence": 0.7999967932701111,
     "style_id": 5,
@@ -80,14 +70,9 @@
       "energy": -0.3639525771141052,
       "pause_weight": 0.08588119596242905
     },
-    "dsp_params": {
-      "jitter_amount": 0.0009459455031901598,
-      "shimmer_amount": 0.00030176102882251143,
-      "aperiodicity_shift": -0.09274359047412872,
-      "spectral_tilt_shift": 0.21977616846561432
-    },
-    "dsp_applied": true,
-    "dsp_seed": 1252506003,
+    "dsp_params": null,
+    "dsp_applied": false,
+    "dsp_seed": null,
     "emotion_probs": {
       "anger": 0.0012070441152900457,
       "disgust": 0.049011509865522385,
@@ -101,7 +86,7 @@
   {
     "target_emotion": "happy",
     "text": "みんなに祝ってもらえて最高に嬉しい！",
-    "audio_path": "demo/v2-dsp-harvest/happy.wav",
+    "audio_path": "demo/v2-no-dsp/happy.wav",
     "dominant_emotion": "happy",
     "confidence": 0.9882565140724182,
     "style_id": 1,
@@ -113,14 +98,9 @@
       "energy": -0.2793424725532532,
       "pause_weight": -0.3991873860359192
     },
-    "dsp_params": {
-      "jitter_amount": 3.419205540922121e-06,
-      "shimmer_amount": 2.340163064218359e-06,
-      "aperiodicity_shift": -0.01773274876177311,
-      "spectral_tilt_shift": 0.24465049803256989
-    },
-    "dsp_applied": true,
-    "dsp_seed": 2212355366,
+    "dsp_params": null,
+    "dsp_applied": false,
+    "dsp_seed": null,
     "emotion_probs": {
       "anger": 9.360652256873436e-06,
       "disgust": 5.129300552653149e-05,
@@ -134,7 +114,7 @@
   {
     "target_emotion": "sad",
     "text": "大切な人がいなくなって悲しい。",
-    "audio_path": "demo/v2-dsp-harvest/sad.wav",
+    "audio_path": "demo/v2-no-dsp/sad.wav",
     "dominant_emotion": "sad",
     "confidence": 0.9845269918441772,
     "style_id": 5,
@@ -146,14 +126,9 @@
       "energy": -0.5142683982849121,
       "pause_weight": 0.23139381408691406
     },
-    "dsp_params": {
-      "jitter_amount": 0.00016346214397344738,
-      "shimmer_amount": 4.1501571104163304e-05,
-      "aperiodicity_shift": -0.03689505532383919,
-      "spectral_tilt_shift": -0.2691032886505127
-    },
-    "dsp_applied": true,
-    "dsp_seed": 3080378033,
+    "dsp_params": null,
+    "dsp_applied": false,
+    "dsp_seed": null,
     "emotion_probs": {
       "anger": 0.00016600628441665322,
       "disgust": 0.009541543200612068,
@@ -167,7 +142,7 @@
   {
     "target_emotion": "surprise",
     "text": "突然の知らせに驚いて声が出た。",
-    "audio_path": "demo/v2-dsp-harvest/surprise.wav",
+    "audio_path": "demo/v2-no-dsp/surprise.wav",
     "dominant_emotion": "surprise",
     "confidence": 0.769093930721283,
     "style_id": 5,
@@ -179,14 +154,9 @@
       "energy": -0.20857121050357819,
       "pause_weight": 0.1653742790222168
     },
-    "dsp_params": {
-      "jitter_amount": 0.0008385744877159595,
-      "shimmer_amount": 0.000520050642080605,
-      "aperiodicity_shift": -0.08316311240196228,
-      "spectral_tilt_shift": 0.2746559977531433
-    },
-    "dsp_applied": true,
-    "dsp_seed": 3445772614,
+    "dsp_params": null,
+    "dsp_applied": false,
+    "dsp_seed": null,
     "emotion_probs": {
       "anger": 0.00208020256832242,
       "disgust": 0.018007982522249222,
