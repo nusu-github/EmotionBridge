@@ -223,4 +223,4 @@ HuggingFace Accelerate で mixed precision (`fp16`/`bf16`)、gradient accumulati
 
 ## Language
 
-日本語テキスト処理。BERT: `sbintuitions/modernbert-ja-130m`。コード中のコメント・ドキュメントは日本語。
+日本語テキスト処理。BERT: `sbintuitions/modernbert-ja-70m`。コード中のコメント・ドキュメントは日本語。
