@@ -138,6 +138,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default="artifacts/prosody/v01/jvnv_egemaps_normalized.parquet",
         help="Path to JVNV eGeMAPS parquet used for DSP mapper initialization",
     )
+    bridge_parser.add_argument(
+        "--dsp-f0-extractor",
+        choices=["dio", "harvest"],
+        default="dio",
+        help="F0 extractor for WORLD analysis in DSP stage",
+    )
     bridge_parser.add_argument("--device", default="cuda", help="cuda or cpu")
 
     return parser
@@ -261,6 +267,7 @@ def _cmd_bridge(
     fallback_threshold: float,
     enable_dsp: bool,
     dsp_features_path: str,
+    dsp_f0_extractor: str,
     device: str,
 ) -> None:
     from emotionbridge.inference import create_pipeline
@@ -275,6 +282,7 @@ def _cmd_bridge(
             fallback_threshold=fallback_threshold,
             enable_dsp=enable_dsp,
             dsp_features_path=dsp_features_path,
+            dsp_f0_extractor=dsp_f0_extractor,
             device=device,
         )
         try:
@@ -337,6 +345,7 @@ def main() -> None:
             args.fallback_threshold,
             args.enable_dsp,
             args.dsp_features_path,
+            args.dsp_f0_extractor,
             args.device,
         )
         return

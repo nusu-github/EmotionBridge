@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import torch
@@ -322,6 +322,7 @@ async def create_pipeline(
     device: str,
     enable_dsp: bool = False,
     dsp_features_path: str | Path = "artifacts/prosody/v01/jvnv_egemaps_normalized.parquet",
+    dsp_f0_extractor: str = "dio",
 ) -> EmotionBridgePipeline:
     """EmotionBridgePipeline を構築するファクトリ関数。"""
     classifier = EmotionEncoder(str(classifier_checkpoint), device=device)
@@ -349,9 +350,18 @@ async def create_pipeline(
 
     if enable_dsp:
         from emotionbridge.dsp import EmotionDSPMapper, EmotionDSPProcessor
+        from emotionbridge.dsp.config import DSPProcessorConfig
+
+        if dsp_f0_extractor not in {"dio", "harvest"}:
+            msg = f"Unsupported dsp_f0_extractor: {dsp_f0_extractor}"
+            raise ValueError(msg)
 
         dsp_mapper = EmotionDSPMapper(features_path=dsp_features_path)
-        dsp_processor = EmotionDSPProcessor()
+        dsp_processor = EmotionDSPProcessor(
+            DSPProcessorConfig(
+                f0_extractor=cast("Any", dsp_f0_extractor),
+            ),
+        )
 
     return EmotionBridgePipeline(
         classifier=classifier,

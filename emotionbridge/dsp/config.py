@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +16,9 @@ class DSPMapperConfig:
 class DSPProcessorConfig:
     """WORLDベースDSP処理の安全制約設定。"""
 
+    f0_extractor: Literal["dio", "harvest"] = "dio"
+    analysis_f0_floor_hz: float = 50.0
+    analysis_f0_ceil_hz: float = 800.0
     f0_clip: tuple[float, float] = (50.0, 800.0)
     aperiodicity_clip: tuple[float, float] = (0.0, 0.95)
     boundary_fade_frames: int = 3

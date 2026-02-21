@@ -1,0 +1,194 @@
+[
+  {
+    "target_emotion": "anger",
+    "text": "ふざけるな、今すぐ謝れ！",
+    "audio_path": "demo/v2-dsp-harvest/anger.wav",
+    "dominant_emotion": "anger",
+    "confidence": 0.7627448439598083,
+    "style_id": 7,
+    "style_name": "ツンツン",
+    "control_params": {
+      "pitch_shift": -0.03244782239198685,
+      "pitch_range": 0.3017551302909851,
+      "speed": 0.06588749587535858,
+      "energy": 0.35928937792778015,
+      "pause_weight": 0.09942647814750671
+    },
+    "dsp_params": {
+      "jitter_amount": 0.23155587911605835,
+      "shimmer_amount": 0.1906862109899521,
+      "aperiodicity_shift": 0.1625194549560547,
+      "spectral_tilt_shift": -0.275690495967865
+    },
+    "dsp_applied": true,
+    "dsp_seed": 2689183727,
+    "emotion_probs": {
+      "anger": 0.7627448439598083,
+      "disgust": 0.2293805330991745,
+      "fear": 0.0034066899679601192,
+      "happy": 0.0012738917721435428,
+      "sad": 0.0018556893337517977,
+      "surprise": 0.0013382942415773869
+    }
+  },
+  {
+    "target_emotion": "disgust",
+    "text": "本当に不快でたまらない。",
+    "audio_path": "demo/v2-dsp-harvest/disgust.wav",
+    "dominant_emotion": "disgust",
+    "confidence": 0.9970265030860901,
+    "style_id": 5,
+    "style_name": "セクシー",
+    "control_params": {
+      "pitch_shift": -0.30661341547966003,
+      "pitch_range": 0.06164282187819481,
+      "speed": -0.2874189019203186,
+      "energy": -0.19781652092933655,
+      "pause_weight": -0.05659721419215202
+    },
+    "dsp_params": {
+      "jitter_amount": 0.01194678246974945,
+      "shimmer_amount": 5.838114520884119e-05,
+      "aperiodicity_shift": 0.04570591822266579,
+      "spectral_tilt_shift": -0.288229763507843
+    },
+    "dsp_applied": true,
+    "dsp_seed": 3493622668,
+    "emotion_probs": {
+      "anger": 0.00023352458083536476,
+      "disgust": 0.9970265030860901,
+      "fear": 0.0008331750286743045,
+      "happy": 0.0001470531860832125,
+      "sad": 0.0017172449734061956,
+      "surprise": 4.254059967934154e-05
+    }
+  },
+  {
+    "target_emotion": "fear",
+    "text": "夜道で足音がして怖くて動けない。",
+    "audio_path": "demo/v2-dsp-harvest/fear.wav",
+    "dominant_emotion": "fear",
+    "confidence": 0.9997617602348328,
+    "style_id": 5,
+    "style_name": "セクシー",
+    "control_params": {
+      "pitch_shift": 0.383476585149765,
+      "pitch_range": 0.3858567178249359,
+      "speed": 0.10071991384029388,
+      "energy": -0.3751746118068695,
+      "pause_weight": 0.07067818194627762
+    },
+    "dsp_params": {
+      "jitter_amount": 3.242612137910328e-06,
+      "shimmer_amount": 2.164513716707006e-06,
+      "aperiodicity_shift": -0.1080707535147667,
+      "spectral_tilt_shift": 0.29288068413734436
+    },
+    "dsp_applied": true,
+    "dsp_seed": 30033614,
+    "emotion_probs": {
+      "anger": 8.658054866828024e-06,
+      "disgust": 5.4162825108505785e-05,
+      "fear": 0.9997617602348328,
+      "happy": 7.050262865959667e-06,
+      "sad": 6.63952887407504e-05,
+      "surprise": 0.00010198535892413929
+    }
+  },
+  {
+    "target_emotion": "happy",
+    "text": "みんなに祝ってもらえて最高に嬉しい！",
+    "audio_path": "demo/v2-dsp-harvest/happy.wav",
+    "dominant_emotion": "happy",
+    "confidence": 0.999248206615448,
+    "style_id": 1,
+    "style_name": "あまあま",
+    "control_params": {
+      "pitch_shift": 0.25082436203956604,
+      "pitch_range": -0.05775048956274986,
+      "speed": 0.009351767599582672,
+      "energy": -0.28044071793556213,
+      "pause_weight": -0.40503352880477905
+    },
+    "dsp_params": {
+      "jitter_amount": 4.2101990402443334e-05,
+      "shimmer_amount": 3.4114298614440486e-05,
+      "aperiodicity_shift": -0.016969280317425728,
+      "spectral_tilt_shift": 0.2440803349018097
+    },
+    "dsp_applied": true,
+    "dsp_seed": 1887473024,
+    "emotion_probs": {
+      "anger": 0.00013645719445776194,
+      "disgust": 9.778512321645394e-05,
+      "fear": 0.0001907355763250962,
+      "happy": 0.999248206615448,
+      "sad": 0.0001213061113958247,
+      "surprise": 0.00020543616847135127
+    }
+  },
+  {
+    "target_emotion": "sad",
+    "text": "大切な人がいなくなって悲しい。",
+    "audio_path": "demo/v2-dsp-harvest/sad.wav",
+    "dominant_emotion": "sad",
+    "confidence": 0.9998519420623779,
+    "style_id": 5,
+    "style_name": "セクシー",
+    "control_params": {
+      "pitch_shift": -0.3138764798641205,
+      "pitch_range": -0.4262455105781555,
+      "speed": 0.220317542552948,
+      "energy": -0.5179552435874939,
+      "pause_weight": 0.23502838611602783
+    },
+    "dsp_params": {
+      "jitter_amount": 9.329293106929981e-07,
+      "shimmer_amount": 1.1412770106744574e-07,
+      "aperiodicity_shift": -0.037381887435913086,
+      "spectral_tilt_shift": -0.2721461057662964
+    },
+    "dsp_applied": true,
+    "dsp_seed": 4077724858,
+    "emotion_probs": {
+      "anger": 4.5651080426978297e-07,
+      "disgust": 6.682054663542658e-05,
+      "fear": 6.8519679189194e-05,
+      "happy": 9.845801287156064e-06,
+      "sad": 0.9998519420623779,
+      "surprise": 2.337710839128704e-06
+    }
+  },
+  {
+    "target_emotion": "surprise",
+    "text": "突然の知らせに驚いて声が出た。",
+    "audio_path": "demo/v2-dsp-harvest/surprise.wav",
+    "dominant_emotion": "surprise",
+    "confidence": 0.9998561143875122,
+    "style_id": 1,
+    "style_name": "あまあま",
+    "control_params": {
+      "pitch_shift": -0.05987827479839325,
+      "pitch_range": -0.3610113859176636,
+      "speed": -0.11099500209093094,
+      "energy": -0.15965206921100616,
+      "pause_weight": 0.19976267218589783
+    },
+    "dsp_params": {
+      "jitter_amount": 1.0059269470730214e-06,
+      "shimmer_amount": 7.975432367857138e-07,
+      "aperiodicity_shift": -0.08350466936826706,
+      "spectral_tilt_shift": 0.2999870479106903
+    },
+    "dsp_applied": true,
+    "dsp_seed": 3846291452,
+    "emotion_probs": {
+      "anger": 3.1901729471428553e-06,
+      "disgust": 4.102952516404912e-06,
+      "fear": 3.158467006869614e-05,
+      "happy": 9.98719988274388e-05,
+      "sad": 5.137546395417303e-06,
+      "surprise": 0.9998561143875122
+    }
+  }
+]

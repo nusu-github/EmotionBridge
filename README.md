@@ -177,7 +177,8 @@ uv run python main.py bridge \
   --generator-checkpoint artifacts/generator/checkpoints/best_generator.pt \
   --style-mapping artifacts/prosody/style_mapping.json \
   --enable-dsp \
-  --dsp-features-path artifacts/prosody/v01/jvnv_egemaps_normalized.parquet
+  --dsp-features-path artifacts/prosody/v01/jvnv_egemaps_normalized.parquet \
+  --dsp-f0-extractor harvest
 ```
 
 主要オプション:
@@ -188,6 +189,7 @@ uv run python main.py bridge \
 | `--fallback-threshold` | `0.3`                    | 感情確信度がこの値未満の場合デフォルトスタイルにフォールバック |
 | `--enable-dsp`         | `False`                  | WORLDベースのDSP後処理を有効化                                  |
 | `--dsp-features-path`  | `artifacts/prosody/v01/jvnv_egemaps_normalized.parquet` | EmotionDSPMapper 初期化用の特徴量parquet |
+| `--dsp-f0-extractor`   | `dio`                    | DSP段のWORLD解析で使うF0抽出法（`dio` または `harvest`）          |
 | `--device`             | `cuda`                   | 推論デバイス（`cuda` または `cpu`）                            |
 | `--voicevox-url`       | `http://127.0.0.1:50021` | VOICEVOX Engine URL（`http://` / `https://`）                  |
 
@@ -211,6 +213,36 @@ uv run python -m emotionbridge.scripts.prepare_subjective_eval \
 # 回答CSV集計（responses/*.csv 配置後）
 uv run python -m emotionbridge.scripts.analyze_subjective_eval \
   --eval-dir artifacts/prosody/subjective_eval/pilot_v01
+```
+
+### 定量評価（Roundtrip）
+
+`demo/v2`（baseline）と`demo/v2-dsp`（candidate）を比較して、PESQ / MCD / F0 RMSE を算出する。
+
+```bash
+uv run python -m emotionbridge.scripts.evaluate_roundtrip \
+  --baseline-manifest demo/v2/manifest.json \
+  --candidate-manifest demo/v2-dsp/manifest.json \
+  --output-dir artifacts/prosody/roundtrip_eval/v2_dsp
+```
+
+出力ファイル:
+- `roundtrip_metrics.json`: 全指標・Go/No-Go判定・ファイル別詳細
+- `roundtrip_report.md`: 人間可読サマリ
+- `per_file_metrics.csv`: ファイル単位メトリクス
+
+Go/No-Go閾値:
+- `PESQ mean >= 3.5`
+- `MCD mean <= 6.0 dB`
+- `F0 RMSE mean <= 5.0 Hz`
+
+Harvest比較（`demo/v2-dsp-harvest`）:
+
+```bash
+uv run python -m emotionbridge.scripts.evaluate_roundtrip \
+  --baseline-manifest demo/v2/manifest.json \
+  --candidate-manifest demo/v2-dsp-harvest/manifest.json \
+  --output-dir artifacts/prosody/roundtrip_eval/v2_dsp_harvest
 ```
 
 ## Python API
@@ -239,6 +271,7 @@ pipeline = await create_pipeline(
     fallback_threshold=0.3,
     enable_dsp=True,
     dsp_features_path="artifacts/prosody/v01/jvnv_egemaps_normalized.parquet",
+    dsp_f0_extractor="harvest",
     device="cuda",
 )
 

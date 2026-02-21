@@ -84,6 +84,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="EmotionDSPMapperの初期化に使うJVNV eGeMAPS parquet",
     )
     parser.add_argument(
+        "--dsp-f0-extractor",
+        choices=["dio", "harvest"],
+        default="dio",
+        help="DSP段のWORLD解析で使うF0抽出法",
+    )
+    parser.add_argument(
         "--samples-per-emotion",
         type=int,
         default=1,
@@ -235,6 +241,7 @@ async def run_prepare(
     fallback_threshold: float,
     enable_dsp: bool,
     dsp_features_path: str,
+    dsp_f0_extractor: str,
     samples_per_emotion: int,
     target_emotions_raw: str,
     random_seed: int,
@@ -269,6 +276,7 @@ async def run_prepare(
         fallback_threshold=fallback_threshold,
         enable_dsp=enable_dsp,
         dsp_features_path=dsp_features_path,
+        dsp_f0_extractor=dsp_f0_extractor,
         device=device,
     )
 
@@ -491,6 +499,7 @@ def main() -> None:
             fallback_threshold=args.fallback_threshold,
             enable_dsp=args.enable_dsp,
             dsp_features_path=args.dsp_features_path,
+            dsp_f0_extractor=args.dsp_f0_extractor,
             samples_per_emotion=args.samples_per_emotion,
             target_emotions_raw=args.target_emotions,
             random_seed=args.random_seed,

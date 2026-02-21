@@ -1,5 +1,4 @@
 import json
-import random
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -11,6 +10,7 @@ from sklearn.model_selection import train_test_split
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, TensorDataset
+from transformers import set_seed
 
 from emotionbridge.constants import CONTROL_PARAM_NAMES, JVNV_EMOTION_LABELS
 from emotionbridge.model import DeterministicMixer, ParameterGenerator
@@ -105,11 +105,7 @@ def save_effective_generator_config(
 
 
 def _set_seed(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+    set_seed(seed)
 
 
 def _resolve_device(device_name: str) -> torch.device:

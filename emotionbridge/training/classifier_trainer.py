@@ -344,6 +344,7 @@ def train_classifier(config: ClassifierConfig) -> dict[str, Any] | None:
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
+        processing_class=tokenizer,
         data_collator=ClassifierBatchCollator(tokenizer, config.data.max_length),
         compute_metrics=_create_compute_metrics(),
         callbacks=[

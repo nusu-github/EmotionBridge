@@ -67,12 +67,27 @@ class EmotionDSPProcessor:
     def _analyze(self, wav: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         world = cast("Any", pw)
         wav64 = np.asarray(wav, dtype=np.float64)
-        f0, time_axis = world.dio(
-            wav64,
-            sr,
-            frame_period=self._config.frame_period_ms,
-        )
-        f0 = world.stonemask(wav64, f0, time_axis, sr)
+        if self._config.f0_extractor == "dio":
+            f0, time_axis = world.dio(
+                wav64,
+                sr,
+                f0_floor=self._config.analysis_f0_floor_hz,
+                f0_ceil=self._config.analysis_f0_ceil_hz,
+                frame_period=self._config.frame_period_ms,
+            )
+            f0 = world.stonemask(wav64, f0, time_axis, sr)
+        elif self._config.f0_extractor == "harvest":
+            f0, time_axis = world.harvest(
+                wav64,
+                sr,
+                f0_floor=self._config.analysis_f0_floor_hz,
+                f0_ceil=self._config.analysis_f0_ceil_hz,
+                frame_period=self._config.frame_period_ms,
+            )
+        else:
+            msg = f"Unsupported f0_extractor: {self._config.f0_extractor}"
+            raise ValueError(msg)
+
         sp = world.cheaptrick(wav64, f0, time_axis, sr)
         ap = world.d4c(wav64, f0, time_axis, sr)
         return f0, sp, ap
